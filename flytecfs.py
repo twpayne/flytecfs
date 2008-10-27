@@ -15,7 +15,6 @@
 #   along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 
-# TODO tracklogs.zip
 # TODO tracklogs/*.IGC
 # TODO routes/*.gpx
 # TODO waypoints/*.gpx
@@ -38,6 +37,7 @@ try:
     from xml.etree.cElementTree import ElementTree, TreeBuilder
 except ImportError:
     from xml.etree.ElementTree import ElementTree, TreeBuilder
+from zipfile import ZipFile, ZipInfo, ZIP_DEFLATED
 
 import fuse
 
@@ -137,6 +137,41 @@ class TracklogFile(Direntry):
     def read(self, size, offset):
         if self.content is None:
             self.content = ''.join(self.flytec.tracklog(self.track))
+        self.st.st_size = len(self.content)
+        return self.content[offset:offset + size]
+
+
+class TracklogsZipFile(Direntry):
+
+    def __init__(self, flytec):
+        Direntry.__init__(self, 'tracks.zip', type=stat.S_IFREG)
+        self.flytec = flytec
+        self.content = None
+        self.st.st_mode |= 0444
+        self.st.st_nlink = 1
+        ctime = min(t.dt for t in self.flytec.tracks())
+        mtime = max(t.dt + t.duration for t in self.flytec.tracks())
+        self.st.st_ctime = time.mktime(ctime.timetuple())
+        self.st.st_mtime = time.mktime(mtime.timetuple())
+        self.st.st_atime = self.st.st_mtime
+
+    def open(self, flags):
+        if flags & (os.O_RDONLY | os.O_RDWR | os.O_WRONLY) != os.O_RDONLY:
+            return -errno.EACCESS
+
+    def read(self, size, offset):
+        if self.content is None:
+            string_io = StringIO()
+            zip_file = ZipFile(string_io, 'w', ZIP_DEFLATED)
+            for track in self.flytec.tracks():
+                zi = ZipInfo(track.igc_filename)
+                zi.compress_type = ZIP_DEFLATED
+                zi.date_time = (track.dt + track.duration).timetuple()[:6]
+                zi.external_attr = 0444 << 16
+                zip_file.writestr(zi, self.flytec.tracklog(track))
+            zip_file.close()
+            self.content = string_io.getvalue()
+            string_io.close()
         self.st.st_size = len(self.content)
         return self.content[offset:offset + size]
 
