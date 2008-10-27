@@ -15,7 +15,6 @@
 #   along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 
-# TODO cache tracklogs
 # TODO tracklogs.zip
 # TODO tracklogs/*.IGC
 # TODO routes/*.gpx
