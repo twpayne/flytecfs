@@ -42,6 +42,7 @@ except ImportError:
 import fuse
 
 from flytec import Flytec, POSIXSerialIO
+from flytecproxy import FlytecProxy
 
 
 fuse.fuse_python_api = (0, 2)
@@ -135,7 +136,7 @@ class TracklogFile(Direntry):
 
     def read(self, size, offset):
         if self.content is None:
-            self.content = ''.join(self.flytec.pbrtr(self.track.index))
+            self.content = ''.join(self.flytec.tracklog(self.track))
         self.st.st_size = len(self.content)
         return self.content[offset:offset + size]
 
@@ -158,7 +159,7 @@ class WaypointsFile(Direntry):
             string_io = StringIO()
             string_io.write('<?xml version="1.0" encoding="utf-8"?>')
             with gpx_tag(TreeBuilder()) as tb:
-                for waypoint in self.flytec.ipbrwps():
+                for waypoint in self.flytec.waypoints():
                     lat = '%.8f' % (waypoint.lat / 60000.0)
                     lon = '%.8f' % (waypoint.lon / 60000.0)
                     with tag(tb, 'wpt', {'lat': lat, 'lon': lon}):
@@ -189,16 +190,13 @@ class RoutesFile(Direntry):
         if self.content is None:
             string_io = StringIO()
             string_io.write('<?xml version="1.0" encoding="utf-8"?>')
-            waypoints = {}
-            for waypoint in self.flytec.ipbrwps():
-                waypoints[waypoint.long_name] = waypoint
             with gpx_tag(TreeBuilder()) as tb:
-                for route in self.flytec.ipbrrts():
+                for route in self.flytec.routes():
                     with tag(tb, 'rte'):
                         with tag(tb, 'name'):
                             tb.data(route.name.rstrip())
                         for routepoint in route.routepoints:
-                            waypoint = waypoints[routepoint.long_name]
+                            waypoint = self.flytec.waypoint(routepoint.long_name)
                             lat = '%.8f' % (waypoint.lat / 60000.0)
                             lon = '%.8f' % (waypoint.lon / 60000.0)
                             with tag(tb, 'rtept', {'lat': lat, 'lon': lon}):
@@ -220,9 +218,9 @@ class FlytecFS(fuse.Fuse):
 
     def main(self):
         self.time = time.time()
-        self.flytec = Flytec(POSIXSerialIO(self.device))
+        self.flytec = FlytecProxy(Flytec(POSIXSerialIO(self.device)))
         self.direntries = {}
-        for track in self.flytec.pbrtl():
+        for track in self.flytec.tracks():
             self.direntries['/' + track.igc_filename] = TracklogFile(self.flytec, track)
         self.direntries['/waypoints.gpx'] = WaypointsFile(self.flytec)
         self.direntries['/routes.gpx'] = RoutesFile(self.flytec)
