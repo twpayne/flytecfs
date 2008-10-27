@@ -1,2 +1,4 @@
+*.gpx
 *.pyc
+*.zip
 .*.swp
