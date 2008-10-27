@@ -30,6 +30,7 @@ class SerialProxy(Thread):
         self.obj = obj
         self.lock = Lock()
         self.queue = Queue()
+        self.start()
 
     def run(self):
         while True:
@@ -45,7 +46,9 @@ class SerialProxy(Thread):
     def __getattr__(self, attr):
         with self.lock:
             value = getattr(self.obj, attr)
-            if callable(value):
+            if value is None:
+                raise AttributeError
+            elif callable(value):
                 def proxy(*args, **kwargs):
                     queue = Queue()
                     self.queue.put((queue, attr, args, kwargs))
