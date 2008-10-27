@@ -213,7 +213,7 @@ class RoutesFile(Direntry):
         return self.content[offset:offset + size]
 
 
-class FlytecFuse(fuse.Fuse):
+class FlytecFS(fuse.Fuse):
 
     def __init__(self, *args, **kwargs):
         fuse.Fuse.__init__(self, *args, **kwargs)
@@ -255,7 +255,7 @@ class FlytecFuse(fuse.Fuse):
 
 def main(argv):
     logging.basicConfig(level=logging.INFO)
-    server = FlytecFuse(dash_s_do='setsingle', usage=fuse.Fuse.fusage)
+    server = FlytecFS(dash_s_do='setsingle', usage=fuse.Fuse.fusage)
     server.parser.add_option(mountopt='device', metavar='DEVICE', help='set device')
     server.parse(args=argv, values=server, errex=1)
     if server.fuse_args.mount_expected():

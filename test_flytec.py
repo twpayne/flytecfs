@@ -1,10 +1,10 @@
 import logging
 
 import flytec
-import flytec_fuse
+import flytecfs
 
 logging.basicConfig(level=logging.INFO)
 io = flytec.POSIXSerialIO('/dev/ttyUSB0')
 f = flytec.Flytec(io)
-rd = flytec_fuse.RoutesDirentry(f)
+rd = flytecfs.RoutesFile(f)
 print rd.read(8192, 0)
