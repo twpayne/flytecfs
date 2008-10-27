@@ -26,6 +26,7 @@ try:
     from cStringIO import StringIO
 except ImportError:
     from StringIO import StringIO
+from contextlib import contextmanager
 import errno
 import logging
 import os
@@ -48,43 +49,29 @@ from flytecproxy import FlytecProxy
 fuse.fuse_python_api = (0, 2)
 
 
-class tag(object):
-
-    def __init__(self, tb, name, attrs={}):
-        self.tb = tb
-        self.name = name
-        self.attrs = attrs
-
-    def __enter__(self):
-        self.tb.start(self.name, self.attrs)
-        return self.tb
-
-    def __exit__(self, type, value, traceback):
-        self.tb.end(self.name)
+@contextmanager
+def tag(tb, name, attrs={}):
+    tb.start(name, attrs)
+    yield tb
+    tb.end(name)
 
 
 GPX_NAMESPACE = 'http://www.topografix.com/GPX/1/1'
 GPX_DATETIME_FORMAT = '%Y-%m-%dT%H:%M:%SZ'
 
 
-class gpx_tag(object):
-
-    def __init__(self, tb):
-        self.tb = tb
-
-    def __enter__(self):
-        attrs = {
-            'creator': 'http://github.com/twpayne/tini/wikis',
-            'version': '1.1',
-            'xmlns': GPX_NAMESPACE,
-            'xmlns:xsi': 'http://www.w3.org/2001/XMLSchema-instance',
-            'xsi:schemaLocation': 'http://www.topografix.com/GPX/1/1 http://www.topografix.com/GPX/1/1/gpx.xsd',
-            }
-        self.tb.start('gpx', attrs)
-        return self.tb
-
-    def __exit__(self, type, value, traceback):
-        self.tb.end('gpx')
+@contextmanager
+def gpx_tag(tb):
+    attrs = {
+        'creator': 'http://github.com/twpayne/flytecfs/wikis',
+        'version': '1.1',
+        'xmlns': GPX_NAMESPACE,
+        'xmlns:xsi': 'http://www.w3.org/2001/XMLSchema-instance',
+        'xsi:schemaLocation': 'http://www.topografix.com/GPX/1/1 '
+                              'http://www.topografix.com/GPX/1/1/gpx.xsd',
+        }
+    with tag(tb, 'gpx', attrs) as tb:
+        yield tb
 
 
 class Stat(fuse.Stat):
