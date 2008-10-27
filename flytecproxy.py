@@ -88,7 +88,7 @@ class FlytecProxy(object):
 
     def waypoint(self, long_name):
         if self._waypoints is None:
-            self._waypoints()
+            self.waypoints()
         return self._waypoints_by_long_name[long_name]
 
     def waypoints(self):
