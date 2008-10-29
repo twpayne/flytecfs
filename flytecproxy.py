@@ -120,18 +120,21 @@ class FlytecCache(object):
                 gzfile.close()
         except IOError:
             tracklog = ''.join(self.flytec.pbrtr(track.index))
-            if not os.path.exists(self.tracklogcachedir):
-                os.makedirs(self.tracklogcachedir)
-            fd, tmppath = mkstemp('.IGC.gz', '', self.tracklogcachedir) 
             try:
-                with os.fdopen(fd, 'w') as file:
-                    gzfile = GzipFile(filename, 'w', 9, file)
-                    gzfile.write(tracklog)
-                    gzfile.close()
-                os.rename(tmppath, path)
-            except:
-                os.remove(tmppath)
-                raise
+                if not os.path.exists(self.tracklogcachedir):
+                    os.makedirs(self.tracklogcachedir)
+                fd, tmppath = mkstemp('.IGC.gz', '', self.tracklogcachedir) 
+                try:
+                    with os.fdopen(fd, 'w') as file:
+                        gzfile = GzipFile(filename, 'w', 9, file)
+                        gzfile.write(tracklog)
+                        gzfile.close()
+                    os.rename(tmppath, path)
+                except:
+                    os.remove(tmppath)
+                    raise
+            except IOError:
+                pass
         self._tracklogs[track.index] = tracklog
         return self._tracklogs[track.index]
 
