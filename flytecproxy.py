@@ -24,15 +24,69 @@ from __future__ import with_statement
 from gzip import GzipFile
 import os
 import os.path
+from pprint import pprint
+from Queue import Queue
+import sys
 from tempfile import mkstemp
+from threading import Event, Lock, Thread
 
-from serialproxy import SerialProxy
+
+class SerialProxy(object):
+
+    def __init__(self, obj):
+        self.events = {}
+        self.events_lock = Lock()
+        self.queue = Queue()
+        self.results = {}
+        self.results_lock = Lock()
+        thread = Thread(target=self.__thread, args=(obj,))
+        thread.setDaemon(True)
+        thread.start()
+
+    def __thread(self, obj):
+        while True:
+            key = self.queue.get()
+            with self.events_lock:
+                event = self.events[key]
+            with self.results_lock:
+                if key in self.results:
+                    event.set()
+                    continue
+            attr, args = key
+            try:
+                result = getattr(obj, attr)(*args)
+            except:
+                with self.results_lock:
+                    self.results[key] = (sys.exc_info(), None)
+            else:
+                with self.results_lock:
+                    self.results[key] = (None, result)
+            event.set()
+
+    def __getattr__(self, attr):
+        def f(*args):
+            key = (attr, args)
+            with self.events_lock:
+                if not key in self.events:
+                    self.events[key] = Event()
+                event = self.events[key]
+            if not event.isSet():
+                self.queue.put(key)
+                event.wait()
+            with self.results_lock:
+                exc_info, result = self.results[key]
+            if exc_info:
+                type, value, traceback = exc_info
+                raise type, value, traceback
+            return result
+        setattr(self, attr, f)
+        return f
 
 
-class FlytecProxy(object):
+class FlytecCache(object):
 
     def __init__(self, flytec, cachedir=None):
-        self.flytec = SerialProxy(flytec)
+        self.flytec = flytec
         self._routes = None
         self._snp = self.flytec.pbrsnp()
         self._tracklogs = {}
