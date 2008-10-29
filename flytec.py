@@ -51,7 +51,7 @@ class WriteError(Error): pass
 class ProtocolError(Error): pass
 
 
-class SerialIO:
+class SerialIO(object):
 
     def __init__(self, filename):
         self.logger = logging.getLogger('%s.%s' % (__name__, filename))
@@ -132,7 +132,13 @@ class POSIXSerialIO(SerialIO):
             raise WriteError()
 
 
-class Route:
+class _Struct:
+
+    def __repr__(self):
+        return '<%s %s>' % (self.__class__.__name__, repr(self.__dict__))
+
+
+class Route(_Struct):
 
     def __init__(self, index, name, routepoints):
         self.index = index
@@ -140,14 +146,14 @@ class Route:
         self.routepoints = routepoints
 
 
-class Routepoint:
+class Routepoint(_Struct):
 
     def __init__(self, short_name, long_name):
         self.short_name = short_name
         self.long_name = long_name
 
 
-class SNP:
+class SNP(_Struct):
 
     def __init__(self, instrument, pilot_name, serial_number, software_version):
         self.instrument = instrument
@@ -156,7 +162,7 @@ class SNP:
         self.software_version = software_version
 
 
-class Track:
+class Track(_Struct):
 
     def __init__(self, count, index, dt, duration, igc_filename=None):
         self.count = count
@@ -166,7 +172,7 @@ class Track:
         self.igc_filename = igc_filename
 
 
-class Waypoint:
+class Waypoint(_Struct):
 
     def __init__(self, lat, lon, short_name, long_name, alt):
         self.lat = lat
@@ -176,7 +182,7 @@ class Waypoint:
         self.alt = alt
 
 
-class Flytec:
+class Flytec(object):
 
     def __init__(self, io):
         self.io = io
