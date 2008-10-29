@@ -43,7 +43,7 @@ from zipfile import ZipFile, ZipInfo, ZIP_DEFLATED
 import fuse
 
 from flytec import Flytec, POSIXSerialIO
-from flytecproxy import FlytecProxy
+from flytecproxy import FlytecCache, SerialProxy
 
 
 fuse.fuse_python_api = (0, 2)
@@ -240,7 +240,9 @@ class FlytecFS(fuse.Fuse):
 
     def main(self):
         self.time = time.time()
-        self.flytec = FlytecProxy(Flytec(POSIXSerialIO(self.device)))
+        flytec = Flytec(POSIXSerialIO(self.device))
+        flytec_cache = FlytecCache(flytec)
+        self.flytec = SerialProxy(flytec_cache)
         self.direntries = {}
         for track in self.flytec.tracks():
             self.direntries['/' + track.igc_filename] = TracklogFile(self.flytec, track)
