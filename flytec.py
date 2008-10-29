@@ -26,9 +26,9 @@ from utc import UTC
 
 MANUFACTURER = {}
 for instrument in 'COMPEO COMPEO+ COMPETINO COMPETINO+ GALILEO'.split(' '):
-    MANUFACTURER[instrument] = ('B', 'BRA', 'Brauniger')
+    MANUFACTURER[instrument] = ('B', 'XBR', 'Brauniger')
 for instrument in '5020 5030 6020 6030'.split(' '):
-    MANUFACTURER[instrument] = ('F', 'FLY', 'Flytec')
+    MANUFACTURER[instrument] = ('F', 'XFL', 'Flytec')
 
 XON = '\021'
 XOFF = '\023'
