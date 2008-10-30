@@ -51,6 +51,9 @@ class Direntry(fuse.Direntry):
     def getattr(self):
         return self
 
+    def unlink(self):
+        raise IOError, (errno.EPERM, None)
+
 
 class File(Direntry):
 
@@ -158,6 +161,9 @@ class Filesystem(fuse.Fuse):
 
     def open(self, path, flags):
         return self.get(path).open(flags, context=self.GetContext())
+
+    def unlink(self, path):
+        self.get(path).unlink()
 
 
 class FileX(File):
