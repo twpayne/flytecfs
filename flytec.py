@@ -181,6 +181,17 @@ class Waypoint(_Struct):
         self.long_name = long_name
         self.alt = alt
 
+    def nmea(self):
+        lat_hemi = 'S' if self.lat < 0 else 'N'
+        lat_deg, lat_mmin = divmod(abs(self.lat), 60000)
+        lat_min, lat_mmin = divmod(lat_mmin, 1000)
+        lon_hemi = 'S' if self.lon < 0 else 'N'
+        lon_deg, lon_mmin = divmod(abs(self.lon), 60000)
+        lon_min, lon_mmin = divmod(lon_mmin, 1000)
+        lat = '%02d%02d.%03d,%s' % (lat_deg, lat_min, lat_mmin, lat_hemi)
+        lon = '%02d%02d.%03d,%s' % (lon_deg, lon_min, lon_mmin, lon_hemi)
+        return '%s,%s' % (lat, lon)
+
 
 class Flytec(object):
 
@@ -303,6 +314,10 @@ class Flytec(object):
 
     def pbrtr(self, index):
         return list(self.ipbrtr(index))
+
+    def pbrwpr(self, waypoint):
+        self.none('PBRWPR,%s,,%-17s,%04d'
+                  % (waypoint.nmea(), waypoint.long_name[:17], waypoint.alt))
 
     def ipbrwps(self):
         for m in self.ieach('PBRWPS,', PBRWPS_RE):
