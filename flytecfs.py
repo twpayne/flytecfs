@@ -43,7 +43,7 @@ from zipfile import ZipFile, ZipInfo, ZIP_DEFLATED
 import fuse
 
 import filesystem
-from flytec import Flytec, POSIXSerialIO
+from flytec import Flytec
 from flytecproxy import FlytecCache, SerialProxy
 
 
@@ -280,7 +280,7 @@ class WaypointsFile(GPXFile):
 class FlytecRootDirectory(Directory):
 
     def __init__(self, filesystem):
-        flytec = FlytecCache(Flytec(POSIXSerialIO(filesystem.device)))
+        flytec = FlytecCache(Flytec(filesystem.device))
         Directory.__init__(self, flytec, '')
         self._content = []
         self._content.append(RoutesDirectory(self.flytec, 'routes'))
