@@ -164,25 +164,3 @@ class Filesystem(fuse.Fuse):
 
     def unlink(self, path):
         self.get(path).unlink()
-
-
-class FileX(File):
-
-    def __init__(self):
-        File.__init__(self, 'y')
-        self.content = '5678\n'
-        self.st_size = 1
-
-
-def main(argv):
-    root = Directory('')
-    root.add(File('x', content='1234\n'))
-    root.add(FileX())
-    server = Filesystem(root, dash_s_do='setsingle', usage=fuse.Fuse.fusage)
-    server.parser.add_option(mountopt='device', metavar='PATH', help='set device')
-    server.parse(args=argv, values=server, errex=1)
-    if server.fuse_args.mount_expected():
-        server.main()
-
-if __name__ == '__main__':
-    main(sys.argv)
