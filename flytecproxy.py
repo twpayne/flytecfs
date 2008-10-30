@@ -87,6 +87,7 @@ class FlytecCache(object):
 
     def __init__(self, flytec, cachedir=None):
         self.flytec = flytec
+        self._memory = [None] * 352
         self._routes = None
         self._snp = self.flytec.pbrsnp()
         self._tracklogs = {}
@@ -97,6 +98,17 @@ class FlytecCache(object):
                                              self._snp.instrument,
                                              self._snp.serial_number,
                                              'tracklogs')
+
+    def memory(self, sl):
+        address = sl.start
+        while address < sl.stop:
+            if self._memory[address] is None:
+                page = slice(address, address + 8)
+                self._memory[page] = self.flytec.pbrmemr(page)
+                address += 8
+            else:
+                address += 1
+        return ''.join(map(chr, self._memory[sl]))
 
     def routes(self):
         if self._routes is None:
