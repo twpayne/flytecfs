@@ -100,12 +100,15 @@ class FlytecCache(object):
                                              'tracklogs')
 
     def memory(self, sl):
+        if sl.start >= len(self._memory):
+            return ''
         address = sl.start
-        while address < sl.stop:
+        stop = sl.stop if sl.stop <= len(self._memory) else len(self._memory)
+        while address < stop:
             if self._memory[address] is None:
-                page = slice(address, address + 8)
-                self._memory[page] = self.flytec.pbrmemr(page)
-                address += 8
+                page = self.flytec.pbrmemr(slice(address, address + 8))
+                self._memory[address:address + len(page)] = page
+                address += len(page)
             else:
                 address += 1
         return ''.join(map(chr, self._memory[sl]))
