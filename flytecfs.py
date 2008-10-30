@@ -21,7 +21,6 @@
 # TODO waypoint upload
 # TODO route deletion
 # TODO route upload
-# TODO .memory file
 # TODO preferences application
 
 
@@ -138,6 +137,25 @@ class GPXFile(File):
         pass
 
 
+class MemoryFile(File):
+
+    def __init__(self, flytec, *args, **kwargs):
+        File.__init__(self, flytec, *args, **kwargs)
+        self.st_size = 352
+        self.st_blksize = 8
+        self.st_blocks = (self.st_size + self.st_blksize - 1) / self.st_blksize
+
+    def getattr(self):
+        return self
+
+    def read(self, size, offset):
+        if offset >= self.st_size:
+            return ''
+        if offset + size > self.st_size:
+            size = self.st_size - offset
+        return self.flytec.memory(slice(offset, offset + size))
+
+
 class RoutesDirectory(Directory):
 
     def content(self):
@@ -161,6 +179,17 @@ class RoutesFile(GPXFile):
     def gpx_content(self, tb):
         for route in self.flytec.routes():
             rte_tag(tb, route, self.flytec.waypoint)
+
+
+class SettingsDirectory(Directory):
+
+    def __init__(self, *args, **kwargs):
+        Directory.__init__(self, *args, **kwargs)
+        self._content = []
+        self._content.append(MemoryFile(self.flytec, '.memory'))
+
+    def content(self):
+        return iter(self._content)
 
 
 class TracklogFile(File):
@@ -248,6 +277,7 @@ class FlytecRootDirectory(Directory):
         Directory.__init__(self, flytec, '')
         self._content = []
         self._content.append(RoutesDirectory(self.flytec, 'routes'))
+        self._content.append(SettingsDirectory(self.flytec, 'settings'))
         self._content.append(TracklogsDirectory(self.flytec, 'tracklogs'))
         self._content.append(WaypointsDirectory(self.flytec, 'waypoints'))
 
