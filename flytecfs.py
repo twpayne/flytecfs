@@ -18,7 +18,7 @@
 # TODO enable multi-threading
 # TODO move tracklog cache into this module?
 # TODO waypoint upload
-# TODO route deletion
+# TODO fix route deletion
 # TODO route upload
 # TODO preferences application
 
@@ -173,6 +173,9 @@ class RouteFile(GPXFile):
     def gpx_content(self, tb):
         rte_tag(tb, self.route, self.flytec.waypoint_get)
 
+    def unlink(self):
+        self.flytec.route_unlink(self.route)
+
 
 class RoutesFile(GPXFile):
 
@@ -263,7 +266,7 @@ class WaypointFile(GPXFile):
         wptType_tag(tb, self.waypoint, 'wpt')
 
     def unlink(self):
-        if not self.flytec.waypoint_unlink(self.waypoint.long_name):
+        if not self.flytec.waypoint_unlink(self.waypoint):
             raise IOError, (errno.EPERM, None)
 
 

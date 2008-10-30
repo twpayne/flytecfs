@@ -315,6 +315,12 @@ class Flytec(object):
     def pbrtr(self, index):
         return list(self.ipbrtr(index))
 
+    def pbrrtx(self, route=None):
+        if route:
+            self.none('PBRRTX,%-17s' % route.name)
+        else:
+            self.none('PBRRTX,')
+
     def pbrwpr(self, waypoint):
         self.none('PBRWPR,%s,,%-17s,%04d'
                   % (waypoint.nmea(), waypoint.long_name[:17], waypoint.alt))
@@ -341,8 +347,8 @@ class Flytec(object):
     def pbrwps(self):
         return list(self.ipbrwps())
 
-    def pbrwpx(self, name=None):
-        if name:
-            self.none('PBRWPX,%-17s' % name)
+    def pbrwpx(self, waypoint=None):
+        if waypoint:
+            self.none('PBRWPX,%-17s' % waypoint.name)
         else:
             self.none('PBRWPX,')

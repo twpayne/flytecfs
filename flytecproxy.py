@@ -113,6 +113,11 @@ class FlytecCache(object):
                 address += 1
         return ''.join(map(chr, self._memory[sl]))
 
+    def route_unlink(self, route):
+        self.flytec.pbrrtx(route)
+        if not self._routes is None:
+            self._routes = [r for r in self._routes if r != route]
+
     def routes(self):
         if self._routes is None:
             self._routes = self.flytec.pbrrts()
@@ -166,15 +171,15 @@ class FlytecCache(object):
                 return waypoint
         return None
 
-    def waypoint_unlink(self, long_name):
-        long_name = '%-17s' % long_name[:17]
+    def waypoint_unlink(self, waypoint):
         if self._routes is None:
             self.routes()
         for route in self._routes:
-            if any(rp.long_name == long_name for rp in route.routepoints):
+            if any(rp.long_name == waypoint.long_name
+                   for rp in route.routepoints):
                 return False
         self.flytec.pbrwpx(long_name)
-        self._waypoints = [wp for wp in self._waypoints if wp.long_name != long_name]
+        self._waypoints = [wp for wp in self._waypoints if wp != waypoint]
         return True
 
     def waypoints(self):
