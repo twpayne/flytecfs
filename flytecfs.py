@@ -17,7 +17,6 @@
 
 # TODO enable multi-threading
 # TODO move tracklog cache into this module?
-# TODO waypoint deletion
 # TODO waypoint upload
 # TODO route deletion
 # TODO route upload
@@ -31,6 +30,7 @@ try:
 except ImportError:
     from StringIO import StringIO
 from contextlib import contextmanager
+import errno
 import logging
 import sys
 import time
@@ -261,6 +261,10 @@ class WaypointFile(GPXFile):
 
     def gpx_content(self, tb):
         wptType_tag(tb, self.waypoint, 'wpt')
+
+    def unlink(self):
+        if not self.flytec.waypoint_unlink(self.waypoint.long_name):
+            raise IOError, (errno.EPERM, None)
 
 
 class WaypointsFile(GPXFile):
