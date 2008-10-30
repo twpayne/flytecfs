@@ -15,9 +15,6 @@
 #   along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 
-# TODO tracklogs/*.IGC
-# TODO routes/*.gpx
-# TODO waypoints/*.gpx
 # nlink on waypoints?
 
 from __future__ import with_statement
@@ -27,11 +24,8 @@ try:
 except ImportError:
     from StringIO import StringIO
 from contextlib import contextmanager
-import errno
 import logging
-import os
 from pprint import pprint
-import stat
 import sys
 import time
 try:
@@ -42,11 +36,10 @@ from zipfile import ZipFile, ZipInfo, ZIP_DEFLATED
 
 import fuse
 
+from filesystem import Directory, File, Filesystem
+
 from flytec import Flytec, POSIXSerialIO
 from flytecproxy import FlytecCache, SerialProxy
-
-
-fuse.fuse_python_api = (0, 2)
 
 
 @contextmanager
@@ -63,7 +56,7 @@ GPX_DATETIME_FORMAT = '%Y-%m-%dT%H:%M:%SZ'
 @contextmanager
 def gpx_tag(tb):
     attrs = {
-        'creator': 'http://github.com/twpayne/flytecfs/wikis',
+        'creator': 'http://code.google.com/p/flytecfs',
         'version': '1.1',
         'xmlns': GPX_NAMESPACE,
         'xmlns:xsi': 'http://www.w3.org/2001/XMLSchema-instance',
@@ -74,209 +67,183 @@ def gpx_tag(tb):
         yield tb
 
 
-class Stat(fuse.Stat):
-
-    def __init__(self, **kwargs):
-        self.st_dev = 0
-        self.st_ino = 0
-        self.st_mode = 0
-        self.st_nlink = 0
-        self.st_uid = 0
-        self.st_gid = 0
-        self.st_size = 0
-        self.st_rdev = 0
-        self.st_blksize = 4096
-        self.st_blocks = 0
-        self.st_atime = 0
-        self.st_mtime = 0
-        self.st_ctime = 0
-        fuse.Stat.__init__(self, **kwargs)
+@contextmanager
+def wptType_tag(tb, waypoint, name):
+    lat = '%.8f' % (waypoint.lat / 60000.0)
+    lon = '%.8f' % (waypoint.lon / 60000.0)
+    with tag(tb, name, {'lat': lat, 'lon': lon}):
+        with tag(tb, 'name'):
+            tb.data(waypoint.long_name.rstrip())
+        with tag(tb, 'ele'):
+            tb.data(str(waypoint.alt))
 
 
-class Direntry(fuse.Direntry):
+@contextmanager
+def rte_tag(tb, route, lookup):
+    with tag(tb, 'rte'):
+        with tag(tb, 'name'):
+            tb.data(route.name.rstrip())
+        for routepoint in route.routepoints:
+            waypoint = lookup(routepoint.long_name)
+            wptType_tag(tb, waypoint, 'rtept')
 
-    def __init__(self, name, **kwargs):
-        fuse.Direntry.__init__(self, name, **kwargs)
-        self.st = Stat()
-        self.st.st_mode = self.type
 
-    def stat(self):
-        return self.st
+def write_xml(et, file, indent='\t', prefix=''):
+    attrs = ''.join(' %s="%s"' % pair for pair in et.attrib.items())
+    if et.getchildren():
+        file.write('%s<%s%s>\n' % (prefix, et.tag, attrs))
+        for child in et.getchildren():
+            write_xml(child, file, indent, prefix + indent)
+        file.write('%s</%s>\n' % (prefix, et.tag))
+    elif et.text:
+        file.write('%s<%s%s>%s</%s>\n' % (prefix, et.tag, attrs, et.text, et.tag))
+    else:
+        file.write('%s<%s%s/>\n' % (prefix, et.tag, attrs))
 
 
-class TracklogFile(Direntry):
+class GPXFile(File):
+
+    def content(self):
+        if hasattr(self, '_content'):
+            return self._content
+        string_io = StringIO()
+        string_io.write('<?xml version="1.0" encoding="utf-8"?>\n')
+        with gpx_tag(TreeBuilder()) as tb:
+            self.gpx_content(tb)
+        write_xml(ElementTree(tb.close()).getroot(), string_io)
+        self._content = string_io.getvalue()
+        return self._content
+
+    def gpx_content(self):
+        pass
+
+
+class RoutesDirectory(Directory):
+
+    def __init__(self, flytec):
+        Directory.__init__(self, 'routes')
+        self.add(RoutesFile(flytec))
+        for route in flytec.routes():
+            self.add(RouteFile(flytec, route))
+
+
+class RouteFile(GPXFile):
+
+    def __init__(self, flytec, route):
+        File.__init__(self, '%s.gpx' % route.name.rstrip())
+        self.flytec = flytec
+        self.route = route
+
+    def gpx_content(self, tb):
+        rte_tag(tb, self.route, self.flytec.waypoint)
+
+
+class RoutesFile(GPXFile):
+
+    def __init__(self, flytec):
+        File.__init__(self, 'routes.gpx')
+        self.flytec = flytec
+
+    def gpx_content(self, tb):
+        for route in self.flytec.routes():
+            rte_tag(tb, route, self.flytec.waypoint)
+
+
+class TracklogFile(File):
 
     def __init__(self, flytec, track):
-        Direntry.__init__(self, track.igc_filename, type=stat.S_IFREG)
+        File.__init__(self, track.igc_filename)
         self.flytec = flytec
         self.track = track
-        self.content = None
-        self.st.st_mode |= 0444
-        self.st.st_nlink = 1
-        self.st.st_ctime = time.mktime(track.dt.timetuple())
-        self.st.st_mtime = self.st.st_ctime + track.duration.seconds
-        self.st.st_atime = self.st.st_mtime
+        self.st_ctime = time.mktime(track.dt.timetuple())
+        self.st_mtime = self.st_ctime + track.duration.seconds
+        self.st_atime = self.st_mtime
 
-    def open(self, flags):
-        if flags & (os.O_RDONLY | os.O_RDWR | os.O_WRONLY) != os.O_RDONLY:
-            return -errno.EACCESS
-
-    def read(self, size, offset):
-        if self.content is None:
-            self.content = ''.join(self.flytec.tracklog(self.track))
-        self.st.st_size = len(self.content)
-        return self.content[offset:offset + size]
+    def content(self):
+        if hasattr(self, '_content'):
+            return self._content
+        self._content = ''.join(self.flytec.tracklog(self.track))
+        return self._content
 
 
-class TracklogsZipFile(Direntry):
+class TracklogsDirectory(Directory):
 
     def __init__(self, flytec):
-        Direntry.__init__(self, 'tracks.zip', type=stat.S_IFREG)
-        self.flytec = flytec
-        self.content = None
-        self.st.st_mode |= 0444
-        self.st.st_nlink = 1
-        ctime = min(t.dt for t in self.flytec.tracks())
-        mtime = max(t.dt + t.duration for t in self.flytec.tracks())
-        self.st.st_ctime = time.mktime(ctime.timetuple())
-        self.st.st_mtime = time.mktime(mtime.timetuple())
-        self.st.st_atime = self.st.st_mtime
-
-    def open(self, flags):
-        if flags & (os.O_RDONLY | os.O_RDWR | os.O_WRONLY) != os.O_RDONLY:
-            return -errno.EACCESS
-
-    def read(self, size, offset):
-        if self.content is None:
-            string_io = StringIO()
-            zip_file = ZipFile(string_io, 'w', ZIP_DEFLATED)
-            for track in self.flytec.tracks():
-                zi = ZipInfo(track.igc_filename)
-                zi.compress_type = ZIP_DEFLATED
-                zi.date_time = (track.dt + track.duration).timetuple()[:6]
-                zi.external_attr = 0444 << 16
-                zip_file.writestr(zi, self.flytec.tracklog(track))
-            zip_file.close()
-            self.content = string_io.getvalue()
-            string_io.close()
-        self.st.st_size = len(self.content)
-        return self.content[offset:offset + size]
+        Directory.__init__(self, 'tracklogs')
+        self.add(*[TracklogFile(flytec, track) for track in flytec.tracks()])
+        self.add(TracklogsZipFile(flytec))
 
 
-class WaypointsFile(Direntry):
+class TracklogsZipFile(File):
 
     def __init__(self, flytec):
-        Direntry.__init__(self, 'waypoints.gpx', type=stat.S_IFREG)
+        File.__init__(self, 'tracklogs.zip')
         self.flytec = flytec
-        self.content = None
-        self.st.st_mode |= 0444
-        self.st.st_nlink = 1
+        self.st_ctime = time.mktime(min(t.dt for t in self.flytec.tracks()).timetuple())
+        self.st_mtime = time.mktime(max(t.dt + t.duration for t in self.flytec.tracks()).timetuple())
+        self.st_atime = self.st_mtime
 
-    def open(self, flags):
-        if flags & (os.O_RDONLY | os.O_RDWR | os.O_WRONLY) != os.O_RDONLY:
-            return -errno.EACCESS
-
-    def read(self, size, offset):
-        if self.content is None:
-            string_io = StringIO()
-            string_io.write('<?xml version="1.0" encoding="utf-8"?>')
-            with gpx_tag(TreeBuilder()) as tb:
-                for waypoint in self.flytec.waypoints():
-                    lat = '%.8f' % (waypoint.lat / 60000.0)
-                    lon = '%.8f' % (waypoint.lon / 60000.0)
-                    with tag(tb, 'wpt', {'lat': lat, 'lon': lon}):
-                        with tag(tb, 'name'):
-                            tb.data(waypoint.long_name.rstrip())
-                        with tag(tb, 'ele'):
-                            tb.data(str(waypoint.alt))
-            ElementTree(tb.close()).write(string_io)
-            self.content = string_io.getvalue()
-            string_io.close()
-        return self.content[offset:offset + size]
-
-
-class RoutesFile(Direntry):
-
-    def __init__(self, flytec):
-        Direntry.__init__(self, 'routes.gpx', type=stat.S_IFREG)
-        self.flytec = flytec
-        self.content = None
-        self.st.st_mode |= 0444
-        self.st.st_nlink = 1
-
-    def open(self, flags):
-        if flags & (os.O_RDONLY | os.O_RDWR | os.O_WRONLY) != os.O_RDONLY:
-            return -errno.EACCESS
-
-    def read(self, size, offset):
-        if self.content is None:
-            string_io = StringIO()
-            string_io.write('<?xml version="1.0" encoding="utf-8"?>')
-            with gpx_tag(TreeBuilder()) as tb:
-                for route in self.flytec.routes():
-                    with tag(tb, 'rte'):
-                        with tag(tb, 'name'):
-                            tb.data(route.name.rstrip())
-                        for routepoint in route.routepoints:
-                            waypoint = self.flytec.waypoint(routepoint.long_name)
-                            lat = '%.8f' % (waypoint.lat / 60000.0)
-                            lon = '%.8f' % (waypoint.lon / 60000.0)
-                            with tag(tb, 'rtept', {'lat': lat, 'lon': lon}):
-                                with tag(tb, 'name'):
-                                    tb.data(waypoint.long_name.rstrip())
-                                with tag(tb, 'ele'):
-                                    tb.data(str(waypoint.alt))
-            ElementTree(tb.close()).write(string_io)
-            self.content = string_io.getvalue()
-            string_io.close()
-        return self.content[offset:offset + size]
-
-
-class FlytecFS(fuse.Fuse):
-
-    def __init__(self, *args, **kwargs):
-        fuse.Fuse.__init__(self, *args, **kwargs)
-        self.device = '/dev/ttyUSB0'
-
-    def main(self):
-        self.time = time.time()
-        flytec = Flytec(POSIXSerialIO(self.device))
-        flytec_cache = FlytecCache(flytec)
-        self.flytec = SerialProxy(flytec_cache)
-        self.direntries = {}
+    def content(self):
+        if hasattr(self, '_content'):
+            return self._content
+        string_io = StringIO()
+        zip_file = ZipFile(string_io, 'w', ZIP_DEFLATED)
         for track in self.flytec.tracks():
-            self.direntries['/' + track.igc_filename] = TracklogFile(self.flytec, track)
-        self.direntries['/waypoints.gpx'] = WaypointsFile(self.flytec)
-        self.direntries['/routes.gpx'] = RoutesFile(self.flytec)
-        fuse.Fuse.main(self)
+            zi = ZipInfo(track.igc_filename)
+            zi.compress_type = ZIP_DEFLATED
+            zi.date_time = (track.dt + track.duration).timetuple()[:6]
+            zi.external_attr = 0444 << 16
+            zip_file.writestr(zi, self.flytec.tracklog(track))
+        zip_file.close()
+        self._content = string_io.getvalue()
+        return self._content
 
-    def getattr(self, path):
-        if path == '/':
-            return Stat(st_mode=stat.S_IFDIR | 0755, st_nlink=2)
-        if path in self.direntries:
-            return self.direntries[path].stat()
-        return -errno.ENOENT
 
-    def readdir(self, path, offset):
-        for name in ['.', '..']:
-            yield Direntry(name, type=stat.S_IFDIR)
-        for direntry in self.direntries.values():
-            yield direntry
+class WaypointsDirectory(Directory):
 
-    def open(self, path, flags):
-        if path in self.direntries:
-            return self.direntries[path].open(flags)
-        return -errno.ENOENT
+    def __init__(self, flytec):
+        Directory.__init__(self, 'waypoints')
+        self.add(WaypointsFile(flytec))
+        for waypoint in flytec.waypoints():
+            self.add(WaypointFile(flytec, waypoint))
 
-    def read(self, path, size, offset):
-        if path in self.direntries:
-            return self.direntries[path].read(size, offset)
-        return -errno.ENOENT
+
+class WaypointFile(GPXFile):
+
+    def __init__(self, flytec, waypoint):
+        File.__init__(self, '%s.gpx' % waypoint.long_name.rstrip())
+        self.flytec = flytec
+        self.waypoint = waypoint
+
+    def gpx_content(self, tb):
+        wptType_tag(tb, self.waypoint, 'wpt')
+
+
+class WaypointsFile(GPXFile):
+
+    def __init__(self, flytec):
+        File.__init__(self, 'waypoints.gpx')
+        self.flytec = flytec
+
+    def gpx_content(self, tb):
+        for waypoint in self.flytec.waypoints():
+            wptType_tag(tb, waypoint, 'wpt')
+
+
+class FlytecDirectory(Directory):
+
+    def __init__(self, filesystem):
+        Directory.__init__(self, '')
+        flytec = FlytecCache(Flytec(POSIXSerialIO(filesystem.device)))
+        self.add(RoutesDirectory(flytec))
+        self.add(TracklogsDirectory(flytec))
+        self.add(WaypointsDirectory(flytec))
 
 
 def main(argv):
     logging.basicConfig(level=logging.INFO)
-    server = FlytecFS(dash_s_do='setsingle', usage=fuse.Fuse.fusage)
+    server = Filesystem(FlytecDirectory, dash_s_do='setsingle', usage=fuse.Fuse.fusage)
+    server.device = '/dev/ttyUSB0'
     server.parser.add_option(mountopt='device', metavar='DEVICE', help='set device')
     server.parse(args=argv, values=server, errex=1)
     if server.fuse_args.mount_expected():
