@@ -226,17 +226,17 @@ class Flytec(object):
     def ipbrigc(self):
         return self.ieach('PBRIGC,')
 
-    def pbrmemr(self, address, length):
+    def pbrmemr(self, sl):
         result = []
-        first, last = address, address + length
-        while first < last:
-            m = self.one('PBRMEMR,%04X' % first, PBRMEMR_RE)
-            if m.group(1).decode('hex') != first:
+        address = sl.start
+        while address < sl.stop:
+            m = self.one('PBRMEMR,%04X' % address, PBRMEMR_RE)
+            if int(m.group(1), 16) != address:
                 raise ProtocolError()
-            data = [i.decode('hex') for i in m.group(2).split(',')]
+            data = [int(byte, 16) for byte in m.group(2).split(',')]
             result.extend(data)
-            first += len(data)
-        return result[:length]
+            address += len(data)
+        return result[:sl.stop - sl.start]
 
     def ipbrrts(self):
         for line in self.ieach('PBRRTS,'):
