@@ -98,12 +98,12 @@ def wptType_tag(tb, waypoint, name):
 
 
 @contextmanager
-def rte_tag(tb, route, lookup):
+def rte_tag(tb, route, waypoint_get):
     with tag(tb, 'rte'):
         with tag(tb, 'name'):
             tb.data(route.name.rstrip())
         for routepoint in route.routepoints:
-            waypoint = lookup(routepoint.long_name)
+            waypoint = waypoint_get(routepoint.long_name)
             wptType_tag(tb, waypoint, 'rtept')
 
 
@@ -171,14 +171,14 @@ class RouteFile(GPXFile):
         self.route = route
 
     def gpx_content(self, tb):
-        rte_tag(tb, self.route, self.flytec.waypoint)
+        rte_tag(tb, self.route, self.flytec.waypoint_get)
 
 
 class RoutesFile(GPXFile):
 
     def gpx_content(self, tb):
         for route in self.flytec.routes():
-            rte_tag(tb, route, self.flytec.waypoint)
+            rte_tag(tb, route, self.flytec.waypoint_get)
 
 
 class SettingsDirectory(Directory):

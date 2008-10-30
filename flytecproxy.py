@@ -158,7 +158,7 @@ class FlytecCache(object):
             self._tracks = self.flytec.pbrtl()
         return self._tracks
 
-    def waypoint(self, long_name):
+    def waypoint_get(self, long_name):
         if self._waypoints is None:
             self.waypoints()
         for waypoint in self._waypoints:
