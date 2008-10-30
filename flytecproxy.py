@@ -161,12 +161,23 @@ class FlytecCache(object):
     def waypoint(self, long_name):
         if self._waypoints is None:
             self.waypoints()
-        return self._waypoints_by_long_name[long_name]
+        for waypoint in self._waypoints:
+            if waypoint.long_name == long_name:
+                return waypoint
+        return None
+
+    def waypoint_unlink(self, long_name):
+        long_name = '%-17s' % long_name[:17]
+        if self._routes is None:
+            self.routes()
+        for route in self._routes:
+            if any(rp.long_name == long_name for rp in route.routepoints):
+                return False
+        self.flytec.pbrwpx(long_name)
+        self._waypoints = [wp for wp in self._waypoints if wp.long_name != long_name]
+        return True
 
     def waypoints(self):
         if self._waypoints is None:
             self._waypoints = self.flytec.pbrwps()
-            self._waypoints_by_long_name = {}
-            for waypoint in self._waypoints:
-                self._waypoints_by_long_name[waypoint.long_name] = waypoint
         return self._waypoints
