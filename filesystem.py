@@ -17,6 +17,7 @@
 
 # TODO lazily create directory entries
 # TODO allow generators to be passed to add
+# TODO correct permissions checking in open
 
 import errno
 import os
@@ -40,7 +41,7 @@ class Direntry(fuse.Direntry):
         self.st_gid = os.getgid()
         self.st_size = 0
         self.st_rdev = 0
-        self.st_blksize = 0
+        self.st_blksize = 4096
         self.st_blocks = 0
         _time = time.time()
         self.st_atime = _time
@@ -66,6 +67,7 @@ class File(Direntry):
 
     def getattr(self):
         self.st_size = len(self.content())
+        self.st_blocks = (self.st_size + self.st_blksize - 1) / self.st_blksize
         return self
 
     def fgetattr(self):
@@ -93,11 +95,17 @@ class Directory(Direntry):
         self.st_nlink = 2
         self.direntries = {}
 
+    def getattr(self):
+        self.st_nlink = 2
+        for direntry in self.direntries.values():
+            if isinstance(direntry, Directory):
+                self.st_nlink += 1
+        self.st_blocks = 1 if self.direntries else 0
+        return self
+
     def add(self, *args):
         for direntry in args:
             self.direntries[direntry.name] = direntry
-            if isinstance(direntry, Directory):
-                self.st_nlink += 1
         return self
 
     def readdir(self, offset):
