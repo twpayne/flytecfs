@@ -50,15 +50,15 @@ from flytecproxy import FlytecCache, SerialProxy
 
 class File(filesystem.File):
 
-    def __init__(self, flytec, name):
-        filesystem.File.__init__(self, name)
+    def __init__(self, flytec, *args, **kwargs):
+        filesystem.File.__init__(self, *args, **kwargs)
         self.flytec = flytec
 
 
 class Directory(filesystem.Directory):
 
-    def __init__(self, flytec, name):
-        filesystem.Directory.__init__(self, name)
+    def __init__(self, flytec, *args, **kwargs):
+        filesystem.Directory.__init__(self, *args, **kwargs)
         self.flytec = flytec
 
 
@@ -181,8 +181,8 @@ class TracklogFile(File):
 
 class TracklogsDirectory(Directory):
 
-    def __init__(self, flytec, name):
-        Directory.__init__(self, flytec, name)
+    def __init__(self, flytec, *args, **kwargs):
+        Directory.__init__(self, flytec, *args, **kwargs)
         self._content = []
         for track in self.flytec.tracks():
             self._content.append(TracklogFile(self.flytec, track))
@@ -194,8 +194,8 @@ class TracklogsDirectory(Directory):
 
 class TracklogsZipFile(File):
 
-    def __init__(self, flytec, name):
-        File.__init__(self, flytec, name)
+    def __init__(self, flytec, *args, **kwargs):
+        File.__init__(self, flytec, *args, **kwargs)
         self.st_ctime = time.mktime(min(t.dt for t in self.flytec.tracks()).timetuple())
         self.st_mtime = time.mktime(max(t.dt + t.duration for t in self.flytec.tracks()).timetuple())
         self.st_atime = self.st_mtime
