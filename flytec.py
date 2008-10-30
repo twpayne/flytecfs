@@ -195,8 +195,14 @@ class Waypoint(_Struct):
 
 class Flytec(object):
 
-    def __init__(self, io):
-        self.io = io
+    def __init__(self, io_or_path):
+        if isinstance(io_or_path, str):
+            if os.name == 'posix':
+                self.io = POSIXSerialIO(io_or_path)
+            else:
+                raise RuntimeError
+        else:
+            self.io = io_or_path
         self.snp = None
 
     def ieach(self, command, re=None):
