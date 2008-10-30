@@ -21,6 +21,8 @@
 # TODO waypoint upload
 # TODO route deletion
 # TODO route upload
+# TODO .memory file
+# TODO preferences application
 
 
 from __future__ import with_statement
@@ -41,10 +43,23 @@ from zipfile import ZipFile, ZipInfo, ZIP_DEFLATED
 
 import fuse
 
-from filesystem import Directory, File, Filesystem
-
+import filesystem
 from flytec import Flytec, POSIXSerialIO
 from flytecproxy import FlytecCache, SerialProxy
+
+
+class File(filesystem.File):
+
+    def __init__(self, flytec, name):
+        filesystem.File.__init__(self, name)
+        self.flytec = flytec
+
+
+class Directory(filesystem.Directory):
+
+    def __init__(self, flytec, name):
+        filesystem.Directory.__init__(self, name)
+        self.flytec = flytec
 
 
 @contextmanager
@@ -125,18 +140,16 @@ class GPXFile(File):
 
 class RoutesDirectory(Directory):
 
-    def __init__(self, flytec):
-        Directory.__init__(self, 'routes')
-        self.add(RoutesFile(flytec))
-        for route in flytec.routes():
-            self.add(RouteFile(flytec, route))
+    def content(self):
+        for route in self.flytec.routes():
+            yield RouteFile(self.flytec, route)
+        yield RoutesFile(self.flytec, 'routes.gpx')
 
 
 class RouteFile(GPXFile):
 
     def __init__(self, flytec, route):
-        File.__init__(self, '%s.gpx' % route.name.rstrip())
-        self.flytec = flytec
+        GPXFile.__init__(self, flytec, '%s.gpx' % route.name.rstrip())
         self.route = route
 
     def gpx_content(self, tb):
@@ -144,10 +157,6 @@ class RouteFile(GPXFile):
 
 
 class RoutesFile(GPXFile):
-
-    def __init__(self, flytec):
-        File.__init__(self, 'routes.gpx')
-        self.flytec = flytec
 
     def gpx_content(self, tb):
         for route in self.flytec.routes():
@@ -157,8 +166,7 @@ class RoutesFile(GPXFile):
 class TracklogFile(File):
 
     def __init__(self, flytec, track):
-        File.__init__(self, track.igc_filename)
-        self.flytec = flytec
+        File.__init__(self, flytec, track.igc_filename)
         self.track = track
         self.st_ctime = time.mktime(track.dt.timetuple())
         self.st_mtime = self.st_ctime + track.duration.seconds
@@ -173,17 +181,21 @@ class TracklogFile(File):
 
 class TracklogsDirectory(Directory):
 
-    def __init__(self, flytec):
-        Directory.__init__(self, 'tracklogs')
-        self.add(*[TracklogFile(flytec, track) for track in flytec.tracks()])
-        self.add(TracklogsZipFile(flytec))
+    def __init__(self, flytec, name):
+        Directory.__init__(self, flytec, name)
+        self._content = []
+        for track in self.flytec.tracks():
+            self._content.append(TracklogFile(self.flytec, track))
+        self._content.append(TracklogsZipFile(self.flytec, 'tracks.zip'))
+
+    def content(self):
+        return iter(self._content)
 
 
 class TracklogsZipFile(File):
 
-    def __init__(self, flytec):
-        File.__init__(self, 'tracklogs.zip')
-        self.flytec = flytec
+    def __init__(self, flytec, name):
+        File.__init__(self, flytec, name)
         self.st_ctime = time.mktime(min(t.dt for t in self.flytec.tracks()).timetuple())
         self.st_mtime = time.mktime(max(t.dt + t.duration for t in self.flytec.tracks()).timetuple())
         self.st_atime = self.st_mtime
@@ -206,18 +218,16 @@ class TracklogsZipFile(File):
 
 class WaypointsDirectory(Directory):
 
-    def __init__(self, flytec):
-        Directory.__init__(self, 'waypoints')
-        self.add(WaypointsFile(flytec))
-        for waypoint in flytec.waypoints():
-            self.add(WaypointFile(flytec, waypoint))
+    def content(self):
+        for waypoint in self.flytec.waypoints():
+            yield WaypointFile(self.flytec, waypoint)
+        yield WaypointsFile(self.flytec, 'waypoints.gpx')
 
 
 class WaypointFile(GPXFile):
 
     def __init__(self, flytec, waypoint):
-        File.__init__(self, '%s.gpx' % waypoint.long_name.rstrip())
-        self.flytec = flytec
+        GPXFile.__init__(self, flytec, '%s.gpx' % waypoint.long_name.rstrip())
         self.waypoint = waypoint
 
     def gpx_content(self, tb):
@@ -226,28 +236,28 @@ class WaypointFile(GPXFile):
 
 class WaypointsFile(GPXFile):
 
-    def __init__(self, flytec):
-        File.__init__(self, 'waypoints.gpx')
-        self.flytec = flytec
-
     def gpx_content(self, tb):
         for waypoint in self.flytec.waypoints():
             wptType_tag(tb, waypoint, 'wpt')
 
 
-class FlytecDirectory(Directory):
+class FlytecRootDirectory(Directory):
 
     def __init__(self, filesystem):
-        Directory.__init__(self, '')
         flytec = FlytecCache(Flytec(POSIXSerialIO(filesystem.device)))
-        self.add(RoutesDirectory(flytec))
-        self.add(TracklogsDirectory(flytec))
-        self.add(WaypointsDirectory(flytec))
+        Directory.__init__(self, flytec, '')
+        self._content = []
+        self._content.append(RoutesDirectory(self.flytec, 'routes'))
+        self._content.append(TracklogsDirectory(self.flytec, 'tracklogs'))
+        self._content.append(WaypointsDirectory(self.flytec, 'waypoints'))
+
+    def content(self):
+        return iter(self._content)
 
 
 def main(argv):
     logging.basicConfig(level=logging.INFO)
-    server = Filesystem(FlytecDirectory, dash_s_do='setsingle', usage=fuse.Fuse.fusage)
+    server = filesystem.Filesystem(FlytecRootDirectory, dash_s_do='setsingle', usage=fuse.Fuse.fusage)
     server.device = '/dev/ttyUSB0'
     server.parser.add_option(mountopt='device', metavar='DEVICE', help='set device')
     server.parse(args=argv, values=server, errex=1)

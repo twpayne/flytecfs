@@ -15,9 +15,8 @@
 #   along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 
-# TODO lazily create directory entries
-# TODO allow generators to be passed to add
 # TODO correct permissions checking in open
+
 
 import errno
 import os
@@ -92,26 +91,23 @@ class Directory(Direntry):
             kwargs['type'] = stat.S_IFDIR
         Direntry.__init__(self, name, **kwargs)
         self.st_mode = self.type | mode
-        self.st_nlink = 2
-        self.direntries = {}
+
+    def content(self):
+        pass
 
     def getattr(self):
         self.st_nlink = 2
-        for direntry in self.direntries.values():
+        self.st_blocks = 0
+        for direntry in self.content():
+            self.st_blocks = 1
             if isinstance(direntry, Directory):
                 self.st_nlink += 1
-        self.st_blocks = 1 if self.direntries else 0
-        return self
-
-    def add(self, *args):
-        for direntry in args:
-            self.direntries[direntry.name] = direntry
         return self
 
     def readdir(self, offset):
-        yield Direntry('.')
-        yield Direntry('..')
-        for direntry in self.direntries.values():
+        yield Directory('.')
+        yield Directory('..')
+        for direntry in self.content():
             yield direntry
 
 
@@ -127,9 +123,11 @@ class Filesystem(fuse.Fuse):
         else:
             direntry = self.root
             for name in path.split(os.sep)[1:]:
-                try:
-                    direntry = direntry.direntries[name]
-                except KeyError:
+                for de in direntry.content():
+                    if de.name == name:
+                        direntry = de
+                        break
+                else:
                     raise IOError, (errno.ENOENT, None)
             return direntry
 
