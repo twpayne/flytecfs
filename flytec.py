@@ -328,6 +328,6 @@ class Flytec(object):
 
     def pbrwpx(self, name=None):
         if name:
-            self.zero('PBRWPX,%-17s' % name)
+            self.none('PBRWPX,%-17s' % name)
         else:
-            self.zero('PBRWPX,')
+            self.none('PBRWPX,')
