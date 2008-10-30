@@ -1,4 +1,4 @@
-#   Flytec/Brauniger FUSE functions
+#   Flytec/Brauniger Filesystem
 #   Copyright (C) 2008  Tom Payne
 #
 #   This program is free software: you can redistribute it and/or modify
@@ -15,7 +15,13 @@
 #   along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 
-# nlink on waypoints?
+# TODO enable multi-threading
+# TODO move tracklog cache into this module?
+# TODO waypoint deletion
+# TODO waypoint upload
+# TODO route deletion
+# TODO route upload
+
 
 from __future__ import with_statement
 
@@ -25,7 +31,6 @@ except ImportError:
     from StringIO import StringIO
 from contextlib import contextmanager
 import logging
-from pprint import pprint
 import sys
 import time
 try:
