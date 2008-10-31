@@ -135,13 +135,16 @@ class Flytec(object):
         dates = {}
         for tracklog in self._tracklogs:
             dates.setdefault(tracklog.dt.date(), set()).add(tracklog.dt.time())
-        for path in listdir(self.tracklogcachedir):
-            m = TRACKLOG_CACHE_PATH_RE.match(path)
-            if not m:
-                continue
-            date = datetime.date(*map(int, m.groups()[0:3]))
-            time = datetime.time(*map(int, m.groups()[3:6]))
-            dates.setdefault(date, set()).add(time)
+        try:
+            for path in listdir(self.tracklogcachedir):
+                m = TRACKLOG_CACHE_PATH_RE.match(path)
+                if not m:
+                    continue
+                date = datetime.date(*map(int, m.groups()[0:3]))
+                time = datetime.time(*map(int, m.groups()[3:6]))
+                dates.setdefault(date, set()).add(time)
+        except IOError:
+            pass
         for date, _set in dates.items():
             dates[date] = sorted(_set)
         for tracklog in self._tracklogs:
