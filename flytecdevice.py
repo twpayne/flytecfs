@@ -15,6 +15,9 @@
 #   along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 
+# TODO block io on tracklog
+
+
 from codecs import Codec, CodecInfo
 import codecs
 from datetime import datetime, timedelta, tzinfo
@@ -84,12 +87,6 @@ def nmea_search(encoding):
 
 codecs.register(nmea_search)
 
-
-MANUFACTURER = {}
-for instrument in 'COMPEO COMPEO+ COMPETINO COMPETINO+ GALILEO'.split(' '):
-    MANUFACTURER[instrument] = ('B', 'XBR', 'Brauniger')
-for instrument in '5020 5030 6020 6030'.split(' '):
-    MANUFACTURER[instrument] = ('F', 'XFL', 'Flytec')
 
 XON = '\021'
 XOFF = '\023'
@@ -352,11 +349,7 @@ class FlytecDevice(object):
             self.snp = SNP(*self.one('PBRSNP,', PBRSNP_RE).groups())
         return self.snp
 
-    def pbrtl(self):
-        snp = self.pbrsnp()
-        manufacturer = MANUFACTURER[snp.instrument][1]
-        serial_number = re.sub(r'\A0+', '', snp.serial_number)
-        tracks = []
+    def ipbrtl(self):
         for m in self.ieach('PBRTL,', PBRTL_RE):
             count, index = map(int, m.groups()[0:2])
             day, month, year, hour, minute, second = map(int, m.groups()[2:8])
@@ -364,17 +357,10 @@ class FlytecDevice(object):
                           tzinfo=UTC())
             hours, minutes, seconds = map(int, m.groups()[8:11])
             duration = timedelta(hours=hours, minutes=minutes, seconds=seconds)
-            tracks.append(Track(count, index, dt, duration))
-        date, index = None, 0
-        for track in reversed(tracks):
-            index = index + 1 if track.dt.date() == date else 1
-            track.igc_filename = '%s-%s-%s-%02d.IGC' \
-                                 % (track.dt.strftime('%Y-%m-%d'),
-                                    manufacturer,
-                                    serial_number,
-                                    index)
-            date = track.dt.date()
-        return tracks
+            yield Track(count, index, dt, duration)
+
+    def pbrtl(self):
+        return list(self.ipbrtl())
 
     def ipbrtr(self, index):
         return self.ieach('PBRTR,%02d' % index)

@@ -15,19 +15,28 @@
 #   along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 
-# TODO move cache into Flytec object to correctly calculate track indexes
-# except cache access would then be serialized.  cleverness required.
-
-
 from __future__ import with_statement
 
+import datetime
+from dircache import listdir
 from gzip import GzipFile
 import os
 import os.path
+import re
 import sys
 from tempfile import mkstemp
 
 from flytecdevice import FlytecDevice
+
+
+MANUFACTURER = {}
+for instrument in 'COMPEO COMPEO+ COMPETINO COMPETINO+ GALILEO'.split(' '):
+    MANUFACTURER[instrument] = ('B', 'XBR', 'Brauniger')
+for instrument in '5020 5030 6020 6030'.split(' '):
+    MANUFACTURER[instrument] = ('F', 'XFL', 'Flytec')
+
+TRACKLOG_CACHE_PATH_RE = re.compile(r'\A(\d{4})-(\d\d)-(\d\d)T'
+                                    r'(\d\d):(\d\d):(\d\d)Z\.gz\Z')
 
 
 class Flytec(object):
@@ -37,8 +46,7 @@ class Flytec(object):
         self._memory = [None] * 352
         self._routes = None
         self._snp = self.device.pbrsnp()
-        self._tracklogs = {}
-        self._tracks = None
+        self._tracklogs = None
         self._waypoints = None
         self.cachedir = cachedir or os.path.expanduser('~/.flytecfs/cache')
         self.tracklogcachedir = os.path.join(self.cachedir,
@@ -78,40 +86,70 @@ class Flytec(object):
             self._snp = self.device.pbrsnp()
         return self._snp
 
-    def tracklog(self, track):
-        if track.index in self._tracklogs:
-            return self._tracklogs[track.index]
-        filename = track.dt.strftime('%d.%m.%y,%H:%M:%S')
-        path = os.path.join(self.tracklogcachedir, filename + '.gz')
+    def tracklog_content(self, tracklog):
+        if hasattr(tracklog, '_content'):
+            return tracklog._content
         try:
-            with open(path) as file:
-                gzfile = GzipFile(None, 'r', None, file)
-                tracklog = gzfile.read()
+            with open(tracklog.cache_path) as file:
+                gzfile = GzipFile(tracklog.igc_filename, 'r', None, file)
+                tracklog._content = gzfile.read()
                 gzfile.close()
         except IOError:
-            tracklog = ''.join(self.device.pbrtr(track.index))
+            tracklog._content = ''.join(self.device.pbrtr(tracklog.index))
             try:
                 if not os.path.exists(self.tracklogcachedir):
                     os.makedirs(self.tracklogcachedir)
                 fd, tmppath = mkstemp('.IGC.gz', '', self.tracklogcachedir) 
                 try:
                     with os.fdopen(fd, 'w') as file:
-                        gzfile = GzipFile(filename, 'w', 9, file)
-                        gzfile.write(tracklog)
+                        gzfile = GzipFile(None, 'w', 9, file)
+                        gzfile.write(tracklog._content)
                         gzfile.close()
-                    os.rename(tmppath, path)
+                    os.rename(tmppath, tracklog.cache_path)
                 except:
                     os.remove(tmppath)
                     raise
             except IOError:
                 pass
-        self._tracklogs[track.index] = tracklog
-        return self._tracklogs[track.index]
+        return tracklog._content
 
-    def tracks(self):
-        if self._tracks is None:
-            self._tracks = self.device.pbrtl()
-        return self._tracks
+    def tracklog_unlink(self, tracklog):
+        try:
+            os.unlink(tracklog.cache_path)
+        except IOError:
+            pass
+        self._tracklogs = [t for t in self._tracklogs if t != tracklog]
+
+    def tracklogs(self):
+        if not self._tracklogs is None:
+            return self._tracklogs
+        self._tracklogs = self.device.pbrtl()
+        snp = self.snp()
+        manufacturer = MANUFACTURER[snp.instrument][1]
+        serial_number = re.sub(r'\A0+', '', snp.serial_number)
+        dates = {}
+        for tracklog in self._tracklogs:
+            dates.setdefault(tracklog.dt.date(), set()).add(tracklog.dt.time())
+        for path in listdir(self.tracklogcachedir):
+            m = TRACKLOG_CACHE_PATH_RE.match(path)
+            if not m:
+                continue
+            date = datetime.date(*map(int, m.groups()[0:3]))
+            time = datetime.time(*map(int, m.groups()[3:6]))
+            dates.setdefault(date, set()).add(time)
+        for date, _set in dates.items():
+            dates[date] = sorted(_set)
+        for tracklog in self._tracklogs:
+            index = dates[tracklog.dt.date()].index(tracklog.dt.time()) + 1
+            tracklog.igc_filename = '%s-%s-%s-%02d.IGC' \
+                                    % (tracklog.dt.strftime('%Y-%m-%d'),
+                                       manufacturer,
+                                       serial_number,
+                                       index)
+            filename = tracklog.dt.strftime('%Y-%m-%dT%H:%M:%SZ.gz')
+            tracklog.cache_path = os.path.join(self.tracklogcachedir, filename)
+            date = tracklog.dt.date()
+        return self._tracklogs
 
     def waypoint_get(self, long_name):
         if self._waypoints is None:

@@ -17,11 +17,11 @@
 
 
 # TODO enable multi-threading
-# TODO move tracklog cache into this module?
 # TODO waypoint upload
 # TODO fix route deletion
 # TODO route upload
 # TODO preferences application
+# TODO invalidate some contents after delete
 
 
 from __future__ import with_statement
@@ -194,40 +194,38 @@ class SettingsDirectory(Directory):
 
 class TracklogFile(File):
 
-    def __init__(self, flytec, track):
-        File.__init__(self, flytec, track.igc_filename)
-        self.track = track
-        self.st_ctime = time.mktime(track.dt.timetuple())
-        self.st_mtime = self.st_ctime + track.duration.seconds
+    def __init__(self, flytec, tracklog):
+        File.__init__(self, flytec, tracklog.igc_filename)
+        self.tracklog = tracklog
+        self.st_ctime = time.mktime(tracklog.dt.timetuple())
+        self.st_mtime = self.st_ctime + tracklog.duration.seconds
         self.st_atime = self.st_mtime
 
     def content(self):
         if hasattr(self, '_content'):
             return self._content
-        self._content = ''.join(self.flytec.tracklog(self.track))
+        self._content = self.flytec.tracklog_content(self.tracklog)
         return self._content
+
+    def unlink(self):
+        self.flytec.tracklog_unlink(self.tracklog)
 
 
 class TracklogsDirectory(Directory):
 
-    def __init__(self, flytec, *args, **kwargs):
-        Directory.__init__(self, flytec, *args, **kwargs)
-        self._content = []
-        for track in self.flytec.tracks():
-            self._content.append(TracklogFile(self.flytec, track))
-        self._content.append(TracklogsZipFile(self.flytec, 'tracklogs.zip'))
-
     def content(self):
-        return iter(self._content)
+        for tracklog in self.flytec.tracklogs():
+            yield TracklogFile(self.flytec, tracklog)
+        yield TracklogsZipFile(self.flytec, 'tracklogs.zip')
 
 
 class TracklogsZipFile(File):
 
     def __init__(self, flytec, *args, **kwargs):
         File.__init__(self, flytec, *args, **kwargs)
-        ctimes = (t.dt for t in self.flytec.tracks())
+        ctimes = (t.dt for t in self.flytec.tracklogs())
         self.st_ctime = time.mktime(min(ctimes).timetuple())
-        mtimes = (t.dt + t.duration for t in self.flytec.tracks())
+        mtimes = (t.dt + t.duration for t in self.flytec.tracklogs())
         self.st_mtime = time.mktime(max(mtimes).timetuple())
         self.st_atime = self.st_mtime
 
@@ -236,12 +234,12 @@ class TracklogsZipFile(File):
             return self._content
         string_io = StringIO()
         zip_file = ZipFile(string_io, 'w', ZIP_DEFLATED)
-        for track in self.flytec.tracks():
-            zi = ZipInfo(track.igc_filename)
+        for tracklog in self.flytec.tracklogs():
+            zi = ZipInfo(tracklog.igc_filename)
             zi.compress_type = ZIP_DEFLATED
-            zi.date_time = (track.dt + track.duration).timetuple()[:6]
+            zi.date_time = (tracklog.dt + tracklog.duration).timetuple()[:6]
             zi.external_attr = 0444 << 16
-            zip_file.writestr(zi, self.flytec.tracklog(track))
+            zip_file.writestr(zi, self.flytec.tracklog_content(tracklog))
         zip_file.close()
         self._content = string_io.getvalue()
         return self._content
