@@ -15,13 +15,73 @@
 #   along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 
-from datetime import datetime, timedelta
+from codecs import Codec, CodecInfo
+import codecs
+from datetime import datetime, timedelta, tzinfo
 import logging
 import os
 import re
 
-import nmea
-from utc import UTC
+
+class UTC(tzinfo):
+    """UTC"""
+
+    def utcoffset(self, dt):
+        return timedelta(0)
+
+    def tzname(self):
+        return "UTC"
+
+    def dst(self, dt):
+        return timedelta(0)
+
+
+NMEA_ENCODE_RE = re.compile('\\A[\x20-\x7f]{1,79}\\Z')
+NMEA_DECODE_RE = re.compile('\\A\\$(.{1,79})\\*([0-9A-F]{2})\r\n\\Z')
+
+
+class NMEAError(UnicodeError): pass
+
+
+class NMEACodec(Codec):
+
+    def decode(self, input, errors='strict'):
+        if errors != 'strict':
+            raise NotImplementedError
+        if not input:
+            return ('', 0)
+        m = NMEA_DECODE_RE.match(input)
+        if not m:
+            raise NMEAError(input)
+        checksum = 0
+        for c in m.group(1):
+            checksum ^= ord(c)
+        if checksum != ord(m.group(2).decode('hex')):
+            raise NMEAError(input)
+        return (m.group(1), len(input))
+
+    def encode(self, input, errors='strict'):
+        if errors != 'strict':
+            raise NotImplementedError
+        if not input:
+            return ('', 0)
+        if not NMEA_ENCODE_RE.match(input):
+            raise NMEAError(input)
+        checksum = 0
+        for c in input:
+            checksum ^= ord(c)
+        return ('$%s*%02X\r\n' % (input, checksum), len(input))
+
+
+def nmea_search(encoding):
+    if encoding == 'nmea':
+        codec = NMEACodec()
+        return CodecInfo(codec.encode, codec.decode, name='nmea')
+    else:
+        return None
+
+
+codecs.register(nmea_search)
 
 
 MANUFACTURER = {}
