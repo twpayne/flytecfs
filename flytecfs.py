@@ -114,7 +114,8 @@ def write_xml(et, file, indent='\t', prefix=''):
             write_xml(child, file, indent, prefix + indent)
         file.write('%s</%s>\n' % (prefix, et.tag))
     elif et.text:
-        file.write('%s<%s%s>%s</%s>\n' % (prefix, et.tag, attrs, et.text, et.tag))
+        file.write('%s<%s%s>%s</%s>\n' %
+                   (prefix, et.tag, attrs, et.text, et.tag))
     else:
         file.write('%s<%s%s/>\n' % (prefix, et.tag, attrs))
 
@@ -141,7 +142,6 @@ class MemoryFile(File):
     def __init__(self, flytec, *args, **kwargs):
         File.__init__(self, flytec, *args, **kwargs)
         self.st_size = 352
-        self.st_blksize = 8
         self.st_blocks = (self.st_size + self.st_blksize - 1) / self.st_blksize
 
     def getattr(self):
@@ -228,8 +228,10 @@ class TracklogsZipFile(File):
 
     def __init__(self, flytec, *args, **kwargs):
         File.__init__(self, flytec, *args, **kwargs)
-        self.st_ctime = time.mktime(min(t.dt for t in self.flytec.tracks()).timetuple())
-        self.st_mtime = time.mktime(max(t.dt + t.duration for t in self.flytec.tracks()).timetuple())
+        ctimes = (t.dt for t in self.flytec.tracks())
+        self.st_ctime = time.mktime(min(ctimes).timetuple())
+        mtimes = (t.dt + t.duration for t in self.flytec.tracks())
+        self.st_mtime = time.mktime(max(mtimes).timetuple())
         self.st_atime = self.st_mtime
 
     def content(self):
@@ -294,9 +296,13 @@ class FlytecRootDirectory(Directory):
 
 def main(argv):
     logging.basicConfig(level=logging.INFO)
-    server = filesystem.Filesystem(FlytecRootDirectory, dash_s_do='setsingle', usage=fuse.Fuse.fusage)
+    server = filesystem.Filesystem(FlytecRootDirectory,
+                                   dash_s_do='setsingle',
+                                   usage=fuse.Fuse.fusage)
     server.device = '/dev/ttyUSB0'
-    server.parser.add_option(mountopt='device', metavar='DEVICE', help='set device')
+    server.parser.add_option(mountopt='device',
+                             metavar='PATH',
+                             help='set device')
     server.parse(args=argv, values=server, errex=1)
     if server.fuse_args.mount_expected():
         server.main()
