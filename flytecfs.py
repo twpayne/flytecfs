@@ -148,10 +148,6 @@ class MemoryFile(File):
         return self
 
     def read(self, size, offset):
-        if offset >= self.st_size:
-            return ''
-        if offset + size > self.st_size:
-            size = self.st_size - offset
         return self.flytec.memory(slice(offset, offset + size))
 
 
