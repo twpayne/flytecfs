@@ -40,7 +40,8 @@ NMEA_ENCODE_RE = re.compile('\\A[\x20-\x7f]{1,79}\\Z')
 NMEA_DECODE_RE = re.compile('\\A\\$(.{1,79})\\*([0-9A-F]{2})\r\n\\Z')
 
 
-class NMEAError(UnicodeError): pass
+class NMEAError(UnicodeError):
+    pass
 
 
 class NMEACodec(Codec):
