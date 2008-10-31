@@ -173,7 +173,8 @@ class RouteFile(GPXFile):
         rte_tag(tb, self.route, self.flytec.waypoint_get)
 
     def unlink(self):
-        self.flytec.route_unlink(self.route)
+        if not self.flytec.route_unlink(self.route):
+            raise IOError, (errno.EPERM, None)
 
 
 class RoutesFile(GPXFile):

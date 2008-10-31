@@ -61,9 +61,12 @@ class Flytec(object):
         return ''.join(map(chr, self._memory[sl]))
 
     def route_unlink(self, route):
+        if not route.index:
+            return False
         self.device.pbrrtx(route)
         if not self._routes is None:
             self._routes = [r for r in self._routes if r != route]
+        return True
 
     def routes(self):
         if self._routes is None:
