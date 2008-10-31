@@ -218,7 +218,7 @@ class TracklogsDirectory(Directory):
         self._content = []
         for track in self.flytec.tracks():
             self._content.append(TracklogFile(self.flytec, track))
-        self._content.append(TracklogsZipFile(self.flytec, 'tracks.zip'))
+        self._content.append(TracklogsZipFile(self.flytec, 'tracklogs.zip'))
 
     def content(self):
         return iter(self._content)
