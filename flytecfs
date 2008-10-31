@@ -21,7 +21,6 @@
 # TODO fix route deletion
 # TODO route upload
 # TODO preferences application
-# TODO invalidate some contents after delete
 
 
 from __future__ import with_statement
@@ -179,7 +178,10 @@ class RouteFile(GPXFile):
 
     def __init__(self, flytec, route):
         name = '%s.gpx' % route.name.rstrip()
-        GPXFile.__init__(self, flytec, ('routes',), name)
+        keys = set(['route_%s' % route.name])
+        for routepoint in route.routepoints:
+            keys.add('waypoint_%s' % routepoint.long_name)
+        GPXFile.__init__(self, flytec, keys, name)
         self.route = route
 
     def gpx_content(self, tb):
@@ -193,7 +195,7 @@ class RouteFile(GPXFile):
 class RoutesFile(GPXFile):
 
     def __init__(self, flytec, name):
-        GPXFile.__init__(self, flytec, ('routes',), name)
+        GPXFile.__init__(self, flytec, ('routes', 'waypoints'), name)
 
     def gpx_content(self, tb):
         for route in self.flytec.routes():
@@ -271,7 +273,8 @@ class WaypointFile(GPXFile):
 
     def __init__(self, flytec, waypoint):
         name = '%s.gpx' % waypoint.long_name.rstrip()
-        GPXFile.__init__(self, flytec, ('waypoints',), name)
+        keys = ('waypoint_%s' % waypoint.long_name,)
+        GPXFile.__init__(self, flytec, keys, name)
         self.waypoint = waypoint
 
     def gpx_content(self, tb):

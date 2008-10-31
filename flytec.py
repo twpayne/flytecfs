@@ -77,6 +77,7 @@ class Flytec(object):
         if not self._routes is None:
             self._routes = [r for r in self._routes if r != route]
         self.revs['routes'] += 1
+        self.revs['route_%s' % route.long_name] += 1
         return True
 
     def routes(self):
@@ -173,6 +174,7 @@ class Flytec(object):
         self.device.pbrwpx(waypoint)
         self._waypoints = [wp for wp in self._waypoints if wp != waypoint]
         self.revs['waypoints'] += 1
+        self.revs['waypoint_%s' % waypoint.long_name] += 1
         return True
 
     def waypoints(self):
