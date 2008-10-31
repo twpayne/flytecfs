@@ -44,7 +44,6 @@ import fuse
 
 import filesystem
 from flytec import Flytec
-from flytecproxy import FlytecCache, SerialProxy
 
 
 class File(filesystem.File):
@@ -280,7 +279,7 @@ class WaypointsFile(GPXFile):
 class FlytecRootDirectory(Directory):
 
     def __init__(self, filesystem):
-        flytec = FlytecCache(Flytec(filesystem.device))
+        flytec = Flytec(filesystem.device)
         Directory.__init__(self, flytec, '')
         self._content = []
         self._content.append(RoutesDirectory(self.flytec, 'routes'))

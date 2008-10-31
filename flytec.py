@@ -1,4 +1,4 @@
-#   Flytec/Brauniger functions
+#   Brauniger/Flytec high-level functions
 #   Copyright (C) 2008  Tom Payne
 #
 #   This program is free software: you can redistribute it and/or modify
@@ -15,346 +15,121 @@
 #   along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 
-from datetime import datetime, timedelta
-import logging
+# TODO move cache into Flytec object to correctly calculate track indexes
+# except cache access would then be serialized.  cleverness required.
+
+
+from __future__ import with_statement
+
+from gzip import GzipFile
 import os
-import re
+import os.path
+import sys
+from tempfile import mkstemp
 
-import nmea
-from utc import UTC
-
-
-MANUFACTURER = {}
-for instrument in 'COMPEO COMPEO+ COMPETINO COMPETINO+ GALILEO'.split(' '):
-    MANUFACTURER[instrument] = ('B', 'XBR', 'Brauniger')
-for instrument in '5020 5030 6020 6030'.split(' '):
-    MANUFACTURER[instrument] = ('F', 'XFL', 'Flytec')
-
-XON = '\021'
-XOFF = '\023'
-
-PBRMEMR_RE = re.compile(r'\APBRMEMR,([0-9A-F]+),([0-9A-F]+(?:,[0-9A-F]+)*)\Z')
-PBRRTS_RE1 = re.compile(r'\APBRRTS,(\d+),(\d+),0+,(.*)\Z')
-PBRRTS_RE2 = re.compile(r'\APBRRTS,(\d+),(\d+),(\d+),([^,]*),(.*?)\Z')
-PBRSNP_RE = re.compile(r'\APBRSNP,([^,]*),([^,]*),([^,]*),([^,]*)\Z')
-PBRTL_RE = re.compile(r'\APBRTL,(\d+),(\d+),(\d+).(\d+).(\d+),'
-                      r'(\d+):(\d+):(\d+),(\d+):(\d+):(\d+)\Z')
-PBRWPS_RE = re.compile(r'\APBRWPS,(\d{2})(\d{2})\.(\d{3}),([NS]),'
-                       r'(\d{3})(\d{2})\.(\d{3}),([EW]),([^,]*),([^,]*),(\d+)'
-                       r'\Z')
-
-
-class Error(RuntimeError): pass
-class TimeoutError(Error): pass
-class ReadError(Error): pass
-class WriteError(Error): pass
-class ProtocolError(Error): pass
-
-
-class SerialIO(object):
-
-    def __init__(self, filename):
-        self.logger = logging.getLogger('%s.%s' % (__name__, filename))
-        self.buffer = ''
-
-    def readline(self):
-        if self.buffer == '':
-            self.buffer = self.read(1024)
-        if self.buffer[0] == XON or self.buffer[0] == XOFF:
-            result = self.buffer[0]
-            self.buffer = self.buffer[1:]
-            self.logger.info('%s', result.encode('string_escape'),
-                             extra=dict(direction='read'))
-            return result
-        else:
-            result = ''
-            while True:
-                index = self.buffer.find('\n')
-                if index == -1:
-                  result += self.buffer
-                  self.buffer = self.read(1024)
-                else:
-                  result += self.buffer[0:index + 1]
-                  self.buffer = self.buffer[index + 1:]
-                  self.logger.info('%s', result.encode('string_escape'),
-                                   extra=dict(direction='read'))
-                  return result
-
-    def writeline(self, line):
-        self.logger.info('%s', line.encode('string_escape'),
-                         extra=dict(direction='write'))
-        self.write(line)
-
-    def close(self):
-        pass
-
-    def flush(self):
-        pass
-
-    def read(self, n):
-        raise NotImplementedError
-
-    def write(self, data):
-        raise NotImplementedError
-
-
-if os.name == 'posix':
-    import select
-    import tty
-
-
-class POSIXSerialIO(SerialIO):
-
-    def __init__(self, filename):
-        SerialIO.__init__(self, filename)
-        self.fd = os.open(filename, os.O_RDWR | os.O_NOCTTY | os.O_NONBLOCK)
-        tty.setraw(self.fd)
-        attr = tty.tcgetattr(self.fd)
-        attr[tty.ISPEED] = attr[tty.OSPEED] = tty.B57600
-        tty.tcsetattr(self.fd, tty.TCSAFLUSH, attr)
-
-    def close(self):
-        os.close(self.fd)
-
-    def flush(self):
-        tty.tcflush(self.fd, tty.TCIOFLUSH)
-
-    def read(self, n):
-        if select.select([self.fd], [], [], 1) == ([], [], []):
-            raise TimeoutError()
-        data = os.read(self.fd, n)
-        if not data:
-            raise ReadError()
-        return data
-
-    def write(self, data):
-        if os.write(self.fd, data) != len(data):
-            raise WriteError()
-
-
-class _Struct:
-
-    def __repr__(self):
-        return '<%s %s>' % (self.__class__.__name__, repr(self.__dict__))
-
-
-class Route(_Struct):
-
-    def __init__(self, index, name, routepoints):
-        self.index = index
-        self.name = name
-        self.routepoints = routepoints
-
-
-class Routepoint(_Struct):
-
-    def __init__(self, short_name, long_name):
-        self.short_name = short_name
-        self.long_name = long_name
-
-
-class SNP(_Struct):
-
-    def __init__(self, instrument, pilot_name, serial_number, software_version):
-        self.instrument = instrument
-        self.pilot_name = pilot_name
-        self.serial_number = serial_number
-        self.software_version = software_version
-
-
-class Track(_Struct):
-
-    def __init__(self, count, index, dt, duration, igc_filename=None):
-        self.count = count
-        self.index = index
-        self.dt = dt
-        self.duration = duration
-        self.igc_filename = igc_filename
-
-
-class Waypoint(_Struct):
-
-    def __init__(self, lat, lon, short_name, long_name, alt):
-        self.lat = lat
-        self.lon = lon
-        self.short_name = short_name
-        self.long_name = long_name
-        self.alt = alt
-
-    def nmea(self):
-        lat_hemi = 'S' if self.lat < 0 else 'N'
-        lat_deg, lat_mmin = divmod(abs(self.lat), 60000)
-        lat_min, lat_mmin = divmod(lat_mmin, 1000)
-        lon_hemi = 'S' if self.lon < 0 else 'N'
-        lon_deg, lon_mmin = divmod(abs(self.lon), 60000)
-        lon_min, lon_mmin = divmod(lon_mmin, 1000)
-        lat = '%02d%02d.%03d,%s' % (lat_deg, lat_min, lat_mmin, lat_hemi)
-        lon = '%02d%02d.%03d,%s' % (lon_deg, lon_min, lon_mmin, lon_hemi)
-        return '%s,%s' % (lat, lon)
+from flytecdevice import FlytecDevice
 
 
 class Flytec(object):
 
-    def __init__(self, io_or_path):
-        if isinstance(io_or_path, str):
-            if os.name == 'posix':
-                self.io = POSIXSerialIO(io_or_path)
-            else:
-                raise RuntimeError
-        else:
-            self.io = io_or_path
-        self.snp = None
+    def __init__(self, file_or_path, cachedir=None):
+        self.device = FlytecDevice(file_or_path)
+        self._memory = [None] * 352
+        self._routes = None
+        self._snp = self.device.pbrsnp()
+        self._tracklogs = {}
+        self._tracks = None
+        self._waypoints = None
+        self.cachedir = cachedir or os.path.expanduser('~/.flytecfs/cache')
+        self.tracklogcachedir = os.path.join(self.cachedir,
+                                             self._snp.instrument,
+                                             self._snp.serial_number,
+                                             'tracklogs')
 
-    def ieach(self, command, re=None):
-        try:
-            self.io.writeline(command.encode('nmea'))
-            if self.io.readline() != XOFF:
-                raise Error
-            while True:
-                line = self.io.readline()
-                if line == XON:
-                    break
-                elif re is None:
-                    yield line
-                else:
-                    m = re.match(line.decode('nmea'))
-                    if m is None:
-                        raise Error(line)
-                    yield m
-        except:
-            self.io.flush()
-            raise
-
-    def none(self, command):
-        for m in self.ieach(command):
-            raise Error(m)
-
-    def one(self, command, re=None):
-        result = None
-        for m in self.ieach(command, re):
-            if not result is None:
-                raise Error(m)
-            result = m
-        return result
-
-    def pbrconf(self):
-        self.none('PBRCONF,')
-
-    def ipbrigc(self):
-        return self.ieach('PBRIGC,')
-
-    def pbrmemr(self, sl):
-        result = []
+    def memory(self, sl):
+        if sl.start >= len(self._memory):
+            return ''
         address = sl.start
-        while address < sl.stop:
-            m = self.one('PBRMEMR,%04X' % address, PBRMEMR_RE)
-            if int(m.group(1), 16) != address:
-                raise ProtocolError()
-            data = [int(byte, 16) for byte in m.group(2).split(',')]
-            result.extend(data)
-            address += len(data)
-        return result[:sl.stop - sl.start]
-
-    def ipbrrts(self):
-        for line in self.ieach('PBRRTS,'):
-            line = line.decode('nmea')
-            m = PBRRTS_RE1.match(line)
-            if m:
-                index = int(m.group(1))
-                count = int(m.group(2))
-                name = m.group(3)
-                if count == 1:
-                    yield Route(index, name, [])
-                else:
-                    routepoints = []
+        stop = sl.stop if sl.stop <= len(self._memory) else len(self._memory)
+        while address < stop:
+            if self._memory[address] is None:
+                page = self.device.pbrmemr(slice(address, address + 8))
+                self._memory[address:address + len(page)] = page
+                address += len(page)
             else:
-                m = PBRRTS_RE2.match(line)
-                if m:
-                    index = int(m.group(1))
-                    count = int(m.group(2))
-                    routepoint_index = int(m.group(3))
-                    routepoint_short_name = m.group(4)
-                    routepoint_long_name = m.group(5)
-                    routepoint = Routepoint(routepoint_short_name,
-                                            routepoint_long_name)
-                    routepoints.append(routepoint)
-                    if routepoint_index == count - 1:
-                        yield Route(index, name, routepoints)
-                else:
-                    raise Error(m)
+                address += 1
+        return ''.join(map(chr, self._memory[sl]))
 
-    def pbrrts(self):
-        return list(self.ipbrrts())
+    def route_unlink(self, route):
+        self.device.pbrrtx(route)
+        if not self._routes is None:
+            self._routes = [r for r in self._routes if r != route]
 
-    def pbrsnp(self):
-        if self.snp is None:
-            self.snp = SNP(*self.one('PBRSNP,', PBRSNP_RE).groups())
-        return self.snp
+    def routes(self):
+        if self._routes is None:
+            self._routes = self.device.pbrrts()
+        return self._routes
 
-    def pbrtl(self):
-        snp = self.pbrsnp()
-        manufacturer = MANUFACTURER[snp.instrument][1]
-        serial_number = re.sub(r'\A0+', '', snp.serial_number)
-        tracks = []
-        for m in self.ieach('PBRTL,', PBRTL_RE):
-            count, index = map(int, m.groups()[0:2])
-            day, month, year, hour, minute, second = map(int, m.groups()[2:8])
-            dt = datetime(year + 2000, month, day, hour, minute, second,
-                          tzinfo=UTC())
-            hours, minutes, seconds = map(int, m.groups()[8:11])
-            duration = timedelta(hours=hours, minutes=minutes, seconds=seconds)
-            tracks.append(Track(count, index, dt, duration))
-        date, index = None, 0
-        for track in reversed(tracks):
-            index = index + 1 if track.dt.date() == date else 1
-            track.igc_filename = '%s-%s-%s-%02d.IGC' \
-                                 % (track.dt.strftime('%Y-%m-%d'),
-                                    manufacturer,
-                                    serial_number,
-                                    index)
-            date = track.dt.date()
-        return tracks
+    def snp(self):
+        if self._snp is None:
+            self._snp = self.device.pbrsnp()
+        return self._snp
 
-    def ipbrtr(self, index):
-        return self.ieach('PBRTR,%02d' % index)
+    def tracklog(self, track):
+        if track.index in self._tracklogs:
+            return self._tracklogs[track.index]
+        filename = track.dt.strftime('%Y-%m-%dT%H:%M:%SZ.IGC')
+        path = os.path.join(self.tracklogcachedir, filename + '.gz')
+        try:
+            with open(path) as file:
+                gzfile = GzipFile(None, 'r', None, file)
+                tracklog = gzfile.read()
+                gzfile.close()
+        except IOError:
+            tracklog = ''.join(self.device.pbrtr(track.index))
+            try:
+                if not os.path.exists(self.tracklogcachedir):
+                    os.makedirs(self.tracklogcachedir)
+                fd, tmppath = mkstemp('.IGC.gz', '', self.tracklogcachedir) 
+                try:
+                    with os.fdopen(fd, 'w') as file:
+                        gzfile = GzipFile(filename, 'w', 9, file)
+                        gzfile.write(tracklog)
+                        gzfile.close()
+                    os.rename(tmppath, path)
+                except:
+                    os.remove(tmppath)
+                    raise
+            except IOError:
+                pass
+        self._tracklogs[track.index] = tracklog
+        return self._tracklogs[track.index]
 
-    def pbrtr(self, index):
-        return list(self.ipbrtr(index))
+    def tracks(self):
+        if self._tracks is None:
+            self._tracks = self.device.pbrtl()
+        return self._tracks
 
-    def pbrrtx(self, route=None):
-        if route:
-            self.none('PBRRTX,%-17s' % route.name)
-        else:
-            self.none('PBRRTX,')
+    def waypoint_get(self, long_name):
+        if self._waypoints is None:
+            self.waypoints()
+        for waypoint in self._waypoints:
+            if waypoint.long_name == long_name:
+                return waypoint
+        return None
 
-    def pbrwpr(self, waypoint):
-        self.none('PBRWPR,%s,,%-17s,%04d'
-                  % (waypoint.nmea(), waypoint.long_name[:17], waypoint.alt))
+    def waypoint_unlink(self, waypoint):
+        if self._routes is None:
+            self.routes()
+        for route in self._routes:
+            if any(rp.long_name == waypoint.long_name
+                   for rp in route.routepoints):
+                return False
+        self.device.pbrwpx(waypoint)
+        self._waypoints = [wp for wp in self._waypoints if wp != waypoint]
+        return True
 
-    def ipbrwps(self):
-        for m in self.ieach('PBRWPS,', PBRWPS_RE):
-            lat_deg = int(m.group(1))
-            lat_min = int(m.group(2))
-            lat_mmin = int(m.group(3))
-            lat = 60000 * lat_deg + 1000 * lat_min + lat_mmin
-            if m.group(4) == 'S':
-                lat = -lat
-            lon_deg = int(m.group(5))
-            lon_min = int(m.group(6))
-            lon_mmin = int(m.group(7))
-            lon = 60000 * lon_deg + 1000 * lon_min + lon_mmin
-            if m.group(8) == 'W':
-                lon = -lon
-            short_name = m.group(9)
-            long_name = m.group(10)
-            alt = int(m.group(11))
-            yield Waypoint(lat, lon, short_name, long_name, alt)
-
-    def pbrwps(self):
-        return list(self.ipbrwps())
-
-    def pbrwpx(self, waypoint=None):
-        if waypoint:
-            self.none('PBRWPX,%-17s' % waypoint.name)
-        else:
-            self.none('PBRWPX,')
+    def waypoints(self):
+        if self._waypoints is None:
+            self._waypoints = self.device.pbrwps()
+        return self._waypoints
