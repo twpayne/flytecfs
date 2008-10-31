@@ -30,6 +30,7 @@ try:
     from cStringIO import StringIO
 except ImportError:
     from StringIO import StringIO
+from collections import defaultdict
 from contextlib import contextmanager
 import errno
 import logging
@@ -49,15 +50,32 @@ from flytec import Flytec
 
 class File(filesystem.File):
 
-    def __init__(self, flytec, *args, **kwargs):
-        filesystem.File.__init__(self, *args, **kwargs)
+    def __init__(self, flytec, keys, name):
+        filesystem.File.__init__(self, name)
         self.flytec = flytec
+        self._content = None
+        self.keys = keys
+        self.revs = defaultdict()
+
+    def sync(self):
+        if self._content is None or any(self.revs[k] != self.flytec.revs[k] for k in self.keys):
+            self._content = self.flytec_content()
+            for key in self.keys:
+                self.revs[key] = self.flytec.revs[key]
+
+    def getattr(self):
+        self.sync()
+        return filesystem.File.getattr(self)
+
+    def content(self):
+        self.sync()
+        return self._content
 
 
 class Directory(filesystem.Directory):
 
-    def __init__(self, flytec, *args, **kwargs):
-        filesystem.Directory.__init__(self, *args, **kwargs)
+    def __init__(self, flytec, name):
+        filesystem.Directory.__init__(self, name)
         self.flytec = flytec
 
 
@@ -123,16 +141,13 @@ def write_xml(et, file, indent='\t', prefix=''):
 
 class GPXFile(File):
 
-    def content(self):
-        if hasattr(self, '_content'):
-            return self._content
+    def flytec_content(self):
         string_io = StringIO()
         string_io.write('<?xml version="1.0" encoding="utf-8"?>\n')
         with gpx_tag(TreeBuilder()) as tb:
             self.gpx_content(tb)
         write_xml(ElementTree(tb.close()).getroot(), string_io)
-        self._content = string_io.getvalue()
-        return self._content
+        return string_io.getvalue()
 
     def gpx_content(self):
         pass
@@ -140,8 +155,8 @@ class GPXFile(File):
 
 class MemoryFile(File):
 
-    def __init__(self, flytec, *args, **kwargs):
-        File.__init__(self, flytec, *args, **kwargs)
+    def __init__(self, flytec, name):
+        File.__init__(self, flytec, ('memory',), name)
         self.st_size = 352
         self.st_blocks = (self.st_size + self.st_blksize - 1) / self.st_blksize
 
@@ -163,7 +178,8 @@ class RoutesDirectory(Directory):
 class RouteFile(GPXFile):
 
     def __init__(self, flytec, route):
-        GPXFile.__init__(self, flytec, '%s.gpx' % route.name.rstrip())
+        name = '%s.gpx' % route.name.rstrip()
+        GPXFile.__init__(self, flytec, ('routes',), name)
         self.route = route
 
     def gpx_content(self, tb):
@@ -176,6 +192,9 @@ class RouteFile(GPXFile):
 
 class RoutesFile(GPXFile):
 
+    def __init__(self, flytec, name):
+        GPXFile.__init__(self, flytec, ('routes',), name)
+
     def gpx_content(self, tb):
         for route in self.flytec.routes():
             rte_tag(tb, route, self.flytec.waypoint_get)
@@ -183,8 +202,8 @@ class RoutesFile(GPXFile):
 
 class SettingsDirectory(Directory):
 
-    def __init__(self, *args, **kwargs):
-        Directory.__init__(self, *args, **kwargs)
+    def __init__(self, flytec, name):
+        Directory.__init__(self, flytec, name)
         self._content = []
         self._content.append(MemoryFile(self.flytec, '.memory'))
 
@@ -195,17 +214,14 @@ class SettingsDirectory(Directory):
 class TracklogFile(File):
 
     def __init__(self, flytec, tracklog):
-        File.__init__(self, flytec, tracklog.igc_filename)
+        File.__init__(self, flytec, (), tracklog.igc_filename)
         self.tracklog = tracklog
         self.st_ctime = time.mktime(tracklog.dt.timetuple())
         self.st_mtime = self.st_ctime + tracklog.duration.seconds
         self.st_atime = self.st_mtime
 
-    def content(self):
-        if hasattr(self, '_content'):
-            return self._content
-        self._content = self.flytec.tracklog_content(self.tracklog)
-        return self._content
+    def flytec_content(self):
+        return self.flytec.tracklog_content(self.tracklog)
 
     def unlink(self):
         self.flytec.tracklog_unlink(self.tracklog)
@@ -221,28 +237,26 @@ class TracklogsDirectory(Directory):
 
 class TracklogsZipFile(File):
 
-    def __init__(self, flytec, *args, **kwargs):
-        File.__init__(self, flytec, *args, **kwargs)
-        ctimes = (t.dt for t in self.flytec.tracklogs())
+    def __init__(self, flytec, name):
+        File.__init__(self, flytec, ('tracklogs',), name)
+
+    def flytec_content(self):
+        string_io = StringIO()
+        tracklogs = self.flytec.tracklogs()
+        ctimes = (t.dt for t in tracklogs)
         self.st_ctime = time.mktime(min(ctimes).timetuple())
-        mtimes = (t.dt + t.duration for t in self.flytec.tracklogs())
+        mtimes = (t.dt + t.duration for t in tracklogs)
         self.st_mtime = time.mktime(max(mtimes).timetuple())
         self.st_atime = self.st_mtime
-
-    def content(self):
-        if hasattr(self, '_content'):
-            return self._content
-        string_io = StringIO()
         zip_file = ZipFile(string_io, 'w', ZIP_DEFLATED)
-        for tracklog in self.flytec.tracklogs():
+        for tracklog in tracklogs:
             zi = ZipInfo(tracklog.igc_filename)
             zi.compress_type = ZIP_DEFLATED
             zi.date_time = (tracklog.dt + tracklog.duration).timetuple()[:6]
             zi.external_attr = 0444 << 16
             zip_file.writestr(zi, self.flytec.tracklog_content(tracklog))
         zip_file.close()
-        self._content = string_io.getvalue()
-        return self._content
+        return string_io.getvalue()
 
 
 class WaypointsDirectory(Directory):
@@ -256,7 +270,8 @@ class WaypointsDirectory(Directory):
 class WaypointFile(GPXFile):
 
     def __init__(self, flytec, waypoint):
-        GPXFile.__init__(self, flytec, '%s.gpx' % waypoint.long_name.rstrip())
+        name = '%s.gpx' % waypoint.long_name.rstrip()
+        GPXFile.__init__(self, flytec, ('waypoints',), name)
         self.waypoint = waypoint
 
     def gpx_content(self, tb):
@@ -268,6 +283,9 @@ class WaypointFile(GPXFile):
 
 
 class WaypointsFile(GPXFile):
+
+    def __init__(self, flytec, name):
+        GPXFile.__init__(self, flytec, ('waypoints',), name)
 
     def gpx_content(self, tb):
         for waypoint in self.flytec.waypoints():

@@ -17,6 +17,7 @@
 
 from __future__ import with_statement
 
+from collections import defaultdict
 import datetime
 from dircache import listdir
 from gzip import GzipFile
@@ -48,6 +49,7 @@ class Flytec(object):
         self._snp = self.device.pbrsnp()
         self._tracklogs = None
         self._waypoints = None
+        self.revs = defaultdict(int)
         self.cachedir = cachedir or os.path.expanduser('~/.flytecfs/cache')
         self.tracklogcachedir = os.path.join(self.cachedir,
                                              self._snp.instrument,
@@ -74,6 +76,7 @@ class Flytec(object):
         self.device.pbrrtx(route)
         if not self._routes is None:
             self._routes = [r for r in self._routes if r != route]
+        self.revs['routes'] += 1
         return True
 
     def routes(self):
@@ -119,6 +122,7 @@ class Flytec(object):
         except IOError:
             pass
         self._tracklogs = [t for t in self._tracklogs if t != tracklog]
+        self.revs['tracklogs'] += 1
 
     def tracklogs(self):
         if not self._tracklogs is None:
@@ -168,6 +172,7 @@ class Flytec(object):
                 return False
         self.device.pbrwpx(waypoint)
         self._waypoints = [wp for wp in self._waypoints if wp != waypoint]
+        self.revs['waypoints'] += 1
         return True
 
     def waypoints(self):
