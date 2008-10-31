@@ -81,7 +81,7 @@ class Flytec(object):
     def tracklog(self, track):
         if track.index in self._tracklogs:
             return self._tracklogs[track.index]
-        filename = track.dt.strftime('%Y-%m-%dT%H:%M:%SZ.IGC')
+        filename = track.dt.strftime('%d.%m.%y,%H:%M:%S')
         path = os.path.join(self.tracklogcachedir, filename + '.gz')
         try:
             with open(path) as file:
