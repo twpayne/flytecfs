@@ -317,28 +317,24 @@ class FlytecDevice(object):
             line = line.decode('nmea')
             m = PBRRTS_RE1.match(line)
             if m:
-                index = int(m.group(1))
-                count = int(m.group(2))
+                index, count = map(int, m.groups()[0:2])
                 name = m.group(3)
                 if count == 1:
                     yield Route(index, name, [])
                 else:
                     routepoints = []
-            else:
-                m = PBRRTS_RE2.match(line)
-                if m:
-                    index = int(m.group(1))
-                    count = int(m.group(2))
-                    routepoint_index = int(m.group(3))
-                    routepoint_short_name = m.group(4)
-                    routepoint_long_name = m.group(5)
-                    routepoint = Routepoint(routepoint_short_name,
-                                            routepoint_long_name)
-                    routepoints.append(routepoint)
-                    if routepoint_index == count - 1:
-                        yield Route(index, name, routepoints)
-                else:
-                    raise Error(m)
+                continue
+            m = PBRRTS_RE2.match(line)
+            if m:
+                index, count = map(int, m.groups()[0:2])
+                routepoint_index = int(m.group(3))
+                short_name, long_name = m.groups()[3:5]
+                routepoint = Routepoint(short_name, long_name)
+                routepoints.append(routepoint)
+                if routepoint_index == count - 1:
+                    yield Route(index, name, routepoints)
+                continue
+            raise Error(line)
 
     def pbrrts(self):
         return list(self.ipbrrts())
@@ -379,15 +375,11 @@ class FlytecDevice(object):
 
     def ipbrwps(self):
         for m in self.ieach('PBRWPS,', PBRWPS_RE):
-            lat_deg = int(m.group(1))
-            lat_min = int(m.group(2))
-            lat_mmin = int(m.group(3))
+            lat_deg, lat_min, lat_mmin = map(int, m.groups()[0:3])
             lat = 60000 * lat_deg + 1000 * lat_min + lat_mmin
             if m.group(4) == 'S':
                 lat = -lat
-            lon_deg = int(m.group(5))
-            lon_min = int(m.group(6))
-            lon_mmin = int(m.group(7))
+            lon_deg, lon_min, lon_mmin = map(int, m.groups()[4:7])
             lon = 60000 * lon_deg + 1000 * lon_min + lon_mmin
             if m.group(8) == 'W':
                 lon = -lon
