@@ -15,10 +15,6 @@
 #   along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 
-# TODO move cache into Flytec object to correctly calculate track indexes
-# except cache access would then be serialized.  cleverness required.
-
-
 from __future__ import with_statement
 
 from Queue import Queue
