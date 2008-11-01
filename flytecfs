@@ -72,6 +72,7 @@ class Directory(filesystem.Directory):
     def __init__(self, flytec, name, **kwargs):
         filesystem.Directory.__init__(self, name, **kwargs)
         self.flytec = flytec
+        self.st_size = 4096
 
 
 class GPXFile(File):
