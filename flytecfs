@@ -69,8 +69,8 @@ class File(filesystem.File):
 
 class Directory(filesystem.Directory):
 
-    def __init__(self, flytec, name):
-        filesystem.Directory.__init__(self, name)
+    def __init__(self, flytec, name, **kwargs):
+        filesystem.Directory.__init__(self, name, **kwargs)
         self.flytec = flytec
 
 
@@ -240,7 +240,9 @@ class FlytecRootDirectory(Directory):
         self._content = []
         self._content.append(RoutesDirectory(self.flytec, 'routes'))
         self._content.append(SettingsDirectory(self.flytec, 'settings'))
-        self._content.append(TracklogsDirectory(self.flytec, 'tracklogs'))
+        self._content.append(TracklogsDirectory(self.flytec,
+                                                'tracklogs',
+                                                mode=0755))
         self._content.append(WaypointsDirectory(self.flytec, 'waypoints'))
 
     def content(self):
