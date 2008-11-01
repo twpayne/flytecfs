@@ -124,10 +124,27 @@ class Flytec(object):
                 pass
         return tracklog._content
 
+    def tracklog_rename(self, tracklog, filename):
+        tracklog.filename = filename
+        try:
+            rename_path = self.get_cache_path('tracklogs', 'rename', tracklog.id)
+            dirname = os.path.dirname(rename_path)
+            if not os.path.exists(dirname):
+                os.makedirs(dirname)
+            if os.path.lexists(rename_path):
+                os.unlink(rename_path)
+            os.symlink(filename, rename_path)
+        except IOError:
+            pass
+        self.revs['tracklogs'] += 1
+
     def tracklog_unlink(self, tracklog):
         cache_path = self.get_cache_path('tracklogs', 'contents', tracklog.id)
         if os.path.exists(cache_path):
             os.unlink(cache_path)
+        rename_path = self.get_cache_path('tracklogs', 'rename', tracklog.id)
+        if os.path.lexists(rename_path):
+            os.unlink(rename_path)
         self._tracklogs = [t for t in self._tracklogs if t != tracklog]
         self.revs['tracklogs'] += 1
 
@@ -152,13 +169,20 @@ class Flytec(object):
         for date, _set in dates.items():
             dates[date] = sorted(_set)
         for tracklog in self._tracklogs:
+            tracklog.id = tracklog.dt.strftime('%Y-%m-%dT%H:%M:%SZ')
             index = dates[tracklog.dt.date()].index(tracklog.dt.time()) + 1
             tracklog.igc_filename = '%s-%s-%s-%02d.IGC' \
                                     % (tracklog.dt.strftime('%Y-%m-%d'),
                                        manufacturer,
                                        serial_number,
                                        index)
-            tracklog.id = tracklog.dt.strftime('%Y-%m-%dT%H:%M:%SZ')
+            rename_path = self.get_cache_path('tracklogs',
+                                              'rename',
+                                              tracklog.id)
+            if os.path.islink(rename_path):
+                tracklog.filename = os.readlink(rename_path)
+            else:
+                tracklog.filename = tracklog.igc_filename
             date = tracklog.dt.date()
         return self._tracklogs
 
