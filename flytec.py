@@ -36,13 +36,12 @@ for instrument in 'COMPEO COMPEO+ COMPETINO COMPETINO+ GALILEO'.split(' '):
 for instrument in '5020 5030 6020 6030'.split(' '):
     MANUFACTURER[instrument] = ('F', 'XFL', 'Flytec')
 
-TRACKLOG_CACHE_PATH_RE = re.compile(r'\A(\d{4})-(\d\d)-(\d\d)T'
-                                    r'(\d\d):(\d\d):(\d\d)Z\.gz\Z')
+TRACKLOG_ID_RE = re.compile(r'\A(\d{4})-(\d\d)-(\d\d)T(\d\d):(\d\d):(\d\d)Z\Z')
 
 
 class Flytec(object):
 
-    def __init__(self, file_or_path, cachedir=None):
+    def __init__(self, file_or_path, cachebasedir=None):
         self.device = FlytecDevice(file_or_path)
         self._memory = [None] * 352
         self._routes = None
@@ -50,11 +49,14 @@ class Flytec(object):
         self._tracklogs = None
         self._waypoints = None
         self.revs = defaultdict(int)
-        self.cachedir = cachedir or os.path.expanduser('~/.flytecfs/cache')
-        self.tracklogcachedir = os.path.join(self.cachedir,
-                                             self._snp.instrument,
-                                             self._snp.serial_number,
-                                             'tracklogs')
+        if cachebasedir is None:
+            cachebasedir = os.path.expanduser('~/.flytecfs/cache')
+        self.cachedir = os.path.join(cachebasedir,
+                                     self._snp.instrument,
+                                     self._snp.serial_number)
+
+    def get_cache_path(self, *args):
+        return os.path.join(self.cachedir, *args)
 
     def memory(self, sl=slice(None, None)):
         if sl.start is None:
@@ -96,23 +98,25 @@ class Flytec(object):
     def tracklog_content(self, tracklog):
         if hasattr(tracklog, '_content'):
             return tracklog._content
+        cache_path = self.get_cache_path('tracklogs', 'contents', tracklog.id)
         try:
-            with open(tracklog.cache_path) as file:
-                gzfile = GzipFile(tracklog.igc_filename, 'r', None, file)
+            with open(cache_path) as file:
+                gzfile = GzipFile(None, 'r', None, file)
                 tracklog._content = gzfile.read()
                 gzfile.close()
         except IOError:
             tracklog._content = self.device.pbrtr(tracklog)
             try:
-                if not os.path.exists(self.tracklogcachedir):
-                    os.makedirs(self.tracklogcachedir)
-                fd, tmppath = mkstemp('.gz', '', self.tracklogcachedir) 
+                dirname = os.path.dirname(cache_path)
+                if not os.path.exists(dirname):
+                    os.makedirs(dirname)
+                fd, tmppath = mkstemp('', '', dirname) 
                 try:
                     with os.fdopen(fd, 'w') as file:
-                        gzfile = GzipFile(None, 'w', 9, file)
+                        gzfile = GzipFile(tracklog.igc_filename, 'w', 9, file)
                         gzfile.write(tracklog._content)
                         gzfile.close()
-                    os.rename(tmppath, tracklog.cache_path)
+                    os.rename(tmppath, cache_path)
                 except:
                     os.remove(tmppath)
                     raise
@@ -121,10 +125,9 @@ class Flytec(object):
         return tracklog._content
 
     def tracklog_unlink(self, tracklog):
-        try:
-            os.unlink(tracklog.cache_path)
-        except IOError:
-            pass
+        cache_path = self.get_cache_path('tracklogs', 'contents', tracklog.id)
+        if os.path.exists(cache_path):
+            os.unlink(cache_path)
         self._tracklogs = [t for t in self._tracklogs if t != tracklog]
         self.revs['tracklogs'] += 1
 
@@ -138,14 +141,14 @@ class Flytec(object):
         dates = {}
         for tracklog in self._tracklogs:
             dates.setdefault(tracklog.dt.date(), set()).add(tracklog.dt.time())
-        if os.path.exists(self.tracklogcachedir):
-            for path in listdir(self.tracklogcachedir):
-                m = TRACKLOG_CACHE_PATH_RE.match(path)
-                if not m:
-                    continue
-                date = datetime.date(*map(int, m.groups()[0:3]))
-                time = datetime.time(*map(int, m.groups()[3:6]))
-                dates.setdefault(date, set()).add(time)
+        cache_path = self.get_cache_path('tracklogs', 'contents')
+        if os.path.exists(cache_path):
+            for path in listdir(cache_path):
+                m = TRACKLOG_ID_RE.match(path)
+                if m:
+                    date = datetime.date(*map(int, m.groups()[0:3]))
+                    time = datetime.time(*map(int, m.groups()[3:6]))
+                    dates.setdefault(date, set()).add(time)
         for date, _set in dates.items():
             dates[date] = sorted(_set)
         for tracklog in self._tracklogs:
@@ -155,8 +158,7 @@ class Flytec(object):
                                        manufacturer,
                                        serial_number,
                                        index)
-            filename = tracklog.dt.strftime('%Y-%m-%dT%H:%M:%SZ.gz')
-            tracklog.cache_path = os.path.join(self.tracklogcachedir, filename)
+            tracklog.id = tracklog.dt.strftime('%Y-%m-%dT%H:%M:%SZ')
             date = tracklog.dt.date()
         return self._tracklogs
 
