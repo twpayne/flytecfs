@@ -141,7 +141,7 @@ class SettingsDirectory(Directory):
     def __init__(self, flytec, name):
         Directory.__init__(self, flytec, name)
         self._content = []
-        self._content.append(MemoryFile(self.flytec, '.memory'))
+        self._content.append(MemoryFile(self.flytec, 'memory'))
 
     def content(self):
         return iter(self._content)
@@ -236,7 +236,7 @@ class FlytecRootDirectory(Directory):
         Directory.__init__(self, flytec, '')
         self._content = []
         self._content.append(RoutesDirectory(self.flytec, 'routes'))
-        self._content.append(SettingsDirectory(self.flytec, 'settings'))
+        self._content.append(SettingsDirectory(self.flytec, '.settings'))
         self._content.append(TracklogsDirectory(self.flytec,
                                                 'tracklogs',
                                                 mode=0755))
