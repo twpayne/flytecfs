@@ -147,14 +147,14 @@ class SerialIO(object):
             while True:
                 index = self.buffer.find('\n')
                 if index == -1:
-                  result += self.buffer
-                  self.buffer = self.read(1024)
+                    result += self.buffer
+                    self.buffer = self.read(1024)
                 else:
-                  result += self.buffer[0:index + 1]
-                  self.buffer = self.buffer[index + 1:]
-                  self.logger.info('%s', result.encode('string_escape'),
-                                   extra=dict(direction='read'))
-                  return result
+                    result += self.buffer[0:index + 1]
+                    self.buffer = self.buffer[index + 1:]
+                    self.logger.info('%s', result.encode('string_escape'),
+                                     extra=dict(direction='read'))
+                    return result
 
     def writeline(self, line):
         self.logger.info('%s', line.encode('string_escape'),
