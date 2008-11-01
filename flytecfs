@@ -95,13 +95,9 @@ class MemoryFile(File):
     def __init__(self, flytec, name):
         File.__init__(self, flytec, ('memory',), name)
         self.st_size = 352
-        self.st_blocks = (self.st_size + self.st_blksize - 1) / self.st_blksize
 
-    def getattr(self):
-        return self
-
-    def read(self, size, offset):
-        return self.flytec.memory(slice(offset, offset + size))
+    def flytec_content(self):
+        return self.flytec.memory()
 
 
 class RoutesDirectory(Directory):

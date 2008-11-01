@@ -49,6 +49,7 @@ class Direntry(fuse.Direntry):
         fuse.Direntry.__init__(self, name, **kwargs)
 
     def getattr(self):
+        self.st_blocks = (self.st_size + self.st_blksize - 1) / self.st_blksize
         return self
 
     def unlink(self):
@@ -69,8 +70,7 @@ class File(Direntry):
 
     def getattr(self):
         self.st_size = len(self.content())
-        self.st_blocks = (self.st_size + self.st_blksize - 1) / self.st_blksize
-        return self
+        return Direntry.getattr(self)
 
     def fgetattr(self):
         return self.getattr()
@@ -100,12 +100,10 @@ class Directory(Direntry):
 
     def getattr(self):
         self.st_nlink = 2
-        self.st_blocks = 0
         for direntry in self.content():
-            self.st_blocks = 1
             if isinstance(direntry, Directory):
                 self.st_nlink += 1
-        return self
+        return Direntry.getattr(self)
 
     def readdir(self, offset):
         yield Directory('.')
