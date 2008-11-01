@@ -56,12 +56,15 @@ class Flytec(object):
                                              self._snp.serial_number,
                                              'tracklogs')
 
-    def memory(self, sl):
-        if sl.start >= len(self._memory):
-            return ''
+    def memory(self, sl=slice(None, None)):
+        if sl.start is None:
+            sl = slice(0, sl.stop)
+        elif sl.start >= len(self._memory):
+            sl = slice(len(self._memory), sl.stop)
+        if sl.stop is None or sl.stop > len(self._memory):
+            sl = slice(sl.start, len(self._memory))
         address = sl.start
-        stop = sl.stop if sl.stop <= len(self._memory) else len(self._memory)
-        while address < stop:
+        while address < sl.stop:
             if self._memory[address] is None:
                 page = self.device.pbrmemr(slice(address, address + 8))
                 self._memory[address:address + len(page)] = page
