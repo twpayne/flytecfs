@@ -30,21 +30,17 @@ try:
 except ImportError:
     from StringIO import StringIO
 from collections import defaultdict
-from contextlib import contextmanager
 import errno
 import logging
 import sys
 import time
-try:
-    from xml.etree.cElementTree import ElementTree, TreeBuilder
-except ImportError:
-    from xml.etree.ElementTree import ElementTree, TreeBuilder
 from zipfile import ZipFile, ZipInfo, ZIP_DEFLATED
 
 import fuse
 
 import filesystem
 from flytec import Flytec
+import gpx
 
 
 class File(filesystem.File):
@@ -78,74 +74,15 @@ class Directory(filesystem.Directory):
         self.flytec = flytec
 
 
-@contextmanager
-def tag(tb, name, attrs={}):
-    tb.start(name, attrs)
-    yield tb
-    tb.end(name)
-
-
-GPX_NAMESPACE = 'http://www.topografix.com/GPX/1/1'
-GPX_DATETIME_FORMAT = '%Y-%m-%dT%H:%M:%SZ'
-
-
-@contextmanager
-def gpx_tag(tb):
-    attrs = {
-        'creator': 'http://code.google.com/p/flytecfs',
-        'version': '1.1',
-        'xmlns': GPX_NAMESPACE,
-        'xmlns:xsi': 'http://www.w3.org/2001/XMLSchema-instance',
-        'xsi:schemaLocation': 'http://www.topografix.com/GPX/1/1 '
-                              'http://www.topografix.com/GPX/1/1/gpx.xsd',
-        }
-    with tag(tb, 'gpx', attrs) as tb:
-        yield tb
-
-
-@contextmanager
-def wptType_tag(tb, waypoint, name):
-    lat = '%.8f' % (waypoint.lat / 60000.0)
-    lon = '%.8f' % (waypoint.lon / 60000.0)
-    with tag(tb, name, {'lat': lat, 'lon': lon}):
-        with tag(tb, 'name'):
-            tb.data(waypoint.long_name.rstrip())
-        with tag(tb, 'ele'):
-            tb.data(str(waypoint.alt))
-
-
-@contextmanager
-def rte_tag(tb, route, waypoint_get):
-    with tag(tb, 'rte'):
-        with tag(tb, 'name'):
-            tb.data(route.name.rstrip())
-        for routepoint in route.routepoints:
-            waypoint = waypoint_get(routepoint.long_name)
-            wptType_tag(tb, waypoint, 'rtept')
-
-
-def write_xml(et, file, indent='\t', prefix=''):
-    attrs = ''.join(' %s="%s"' % pair for pair in et.attrib.items())
-    if et.getchildren():
-        file.write('%s<%s%s>\n' % (prefix, et.tag, attrs))
-        for child in et.getchildren():
-            write_xml(child, file, indent, prefix + indent)
-        file.write('%s</%s>\n' % (prefix, et.tag))
-    elif et.text:
-        file.write('%s<%s%s>%s</%s>\n' %
-                   (prefix, et.tag, attrs, et.text, et.tag))
-    else:
-        file.write('%s<%s%s/>\n' % (prefix, et.tag, attrs))
-
-
 class GPXFile(File):
 
     def flytec_content(self):
         string_io = StringIO()
         string_io.write('<?xml version="1.0" encoding="utf-8"?>\n')
-        with gpx_tag(TreeBuilder()) as tb:
+        tb = None
+        with gpx.gpx_tag() as tb:
             self.gpx_content(tb)
-        write_xml(ElementTree(tb.close()).getroot(), string_io)
+        gpx.write(tb, string_io)
         return string_io.getvalue()
 
     def gpx_content(self):
@@ -185,7 +122,7 @@ class RouteFile(GPXFile):
         self.route = route
 
     def gpx_content(self, tb):
-        rte_tag(tb, self.route, self.flytec.waypoint_get)
+        gpx.rte_tag(tb, self.route, self.flytec.waypoint_get)
 
     def unlink(self):
         if not self.flytec.route_unlink(self.route):
@@ -199,7 +136,7 @@ class RoutesFile(GPXFile):
 
     def gpx_content(self, tb):
         for route in self.flytec.routes():
-            rte_tag(tb, route, self.flytec.waypoint_get)
+            gpx.rte_tag(tb, route, self.flytec.waypoint_get)
 
 
 class SettingsDirectory(Directory):
@@ -278,7 +215,7 @@ class WaypointFile(GPXFile):
         self.waypoint = waypoint
 
     def gpx_content(self, tb):
-        wptType_tag(tb, self.waypoint, 'wpt')
+        gpx.wptType_tag(tb, self.waypoint, 'wpt')
 
     def unlink(self):
         if not self.flytec.waypoint_unlink(self.waypoint):
@@ -292,7 +229,7 @@ class WaypointsFile(GPXFile):
 
     def gpx_content(self, tb):
         for waypoint in self.flytec.waypoints():
-            wptType_tag(tb, waypoint, 'wpt')
+            gpx.wptType_tag(tb, waypoint, 'wpt')
 
 
 class FlytecRootDirectory(Directory):
