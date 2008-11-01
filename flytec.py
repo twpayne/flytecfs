@@ -99,11 +99,11 @@ class Flytec(object):
                 tracklog._content = gzfile.read()
                 gzfile.close()
         except IOError:
-            tracklog._content = ''.join(self.device.pbrtr(tracklog.index))
+            tracklog._content = self.device.pbrtr(tracklog)
             try:
                 if not os.path.exists(self.tracklogcachedir):
                     os.makedirs(self.tracklogcachedir)
-                fd, tmppath = mkstemp('.IGC.gz', '', self.tracklogcachedir) 
+                fd, tmppath = mkstemp('.gz', '', self.tracklogcachedir) 
                 try:
                     with os.fdopen(fd, 'w') as file:
                         gzfile = GzipFile(None, 'w', 9, file)

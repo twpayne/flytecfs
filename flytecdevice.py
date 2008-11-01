@@ -15,9 +15,6 @@
 #   along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 
-# TODO block io on tracklog
-
-
 from codecs import Codec, CodecInfo
 import codecs
 from datetime import datetime, timedelta, tzinfo
@@ -114,6 +111,27 @@ class SerialIO(object):
     def __init__(self, filename):
         self.logger = logging.getLogger('%s.%s' % (__name__, filename))
         self.buffer = ''
+
+    def readblock(self):
+        if self.buffer == '':
+            self.buffer = self.read(1024)
+        if self.buffer[0] == XON or self.buffer[0] == XOFF:
+            result = self.buffer[0]
+            self.buffer = self.buffer[1:]
+            self.logger.info('%s', result.encode('string_escape'),
+                             extra=dict(direction='read'))
+            return result
+        else:
+            index = self.buffer.find(XON)
+            if index == -1:
+                result = self.buffer
+                self.buffer = ''
+            else:
+                result = self.buffer[:index]
+                self.buffer = self.buffer[index:]
+            self.logger.info('%s', result.encode('string_escape'),
+                             extra=dict(direction='read'))
+            return result
 
     def readline(self):
         if self.buffer == '':
@@ -263,7 +281,20 @@ class FlytecDevice(object):
             self.io = file_or_path
         self.snp = None
 
-    def ieach(self, command, re=None):
+    def ieachblock(self, command):
+        try:
+            self.io.writeline(command.encode('nmea'))
+            if self.io.readline() != XOFF:
+                raise Error
+            while True:
+                block = self.io.readblock()
+                if block == XON:
+                    break
+                yield block
+        except:
+            self.io.flush()
+
+    def ieachline(self, command, re=None):
         try:
             self.io.writeline(command.encode('nmea'))
             if self.io.readline() != XOFF:
@@ -284,12 +315,12 @@ class FlytecDevice(object):
             raise
 
     def none(self, command):
-        for m in self.ieach(command):
+        for m in self.ieachline(command):
             raise Error(m)
 
     def one(self, command, re=None):
         result = None
-        for m in self.ieach(command, re):
+        for m in self.ieachline(command, re):
             if not result is None:
                 raise Error(m)
             result = m
@@ -299,7 +330,10 @@ class FlytecDevice(object):
         self.none('PBRCONF,')
 
     def ipbrigc(self):
-        return self.ieach('PBRIGC,')
+        return self.ieachblock('PBRIGC,')
+
+    def pbrigc(self):
+        return ''.join(self.ipbrigc())
 
     def pbrmemr(self, sl):
         result = []
@@ -314,7 +348,7 @@ class FlytecDevice(object):
         return result[:sl.stop - sl.start]
 
     def ipbrrts(self):
-        for line in self.ieach('PBRRTS,'):
+        for line in self.ieachline('PBRRTS,'):
             line = line.decode('nmea')
             m = PBRRTS_RE1.match(line)
             if m:
@@ -350,7 +384,7 @@ class FlytecDevice(object):
         return self.snp
 
     def ipbrtl(self):
-        for m in self.ieach('PBRTL,', PBRTL_RE):
+        for m in self.ieachline('PBRTL,', PBRTL_RE):
             count, index = map(int, m.groups()[0:2])
             day, month, year, hour, minute, second = map(int, m.groups()[2:8])
             dt = datetime(year + 2000, month, day, hour, minute, second,
@@ -362,11 +396,11 @@ class FlytecDevice(object):
     def pbrtl(self):
         return list(self.ipbrtl())
 
-    def ipbrtr(self, index):
-        return self.ieach('PBRTR,%02d' % index)
+    def ipbrtr(self, tracklog):
+        return self.ieachblock('PBRTR,%02d' % tracklog.index)
 
-    def pbrtr(self, index):
-        return list(self.ipbrtr(index))
+    def pbrtr(self, tracklog):
+        return ''.join(self.ipbrtr(tracklog))
 
     def pbrrtx(self, route=None):
         if route:
@@ -379,7 +413,7 @@ class FlytecDevice(object):
                   % (waypoint.nmea(), waypoint.long_name[:17], waypoint.alt))
 
     def ipbrwps(self):
-        for m in self.ieach('PBRWPS,', PBRWPS_RE):
+        for m in self.ieachline('PBRWPS,', PBRWPS_RE):
             lat_deg = int(m.group(1))
             lat_min = int(m.group(2))
             lat_mmin = int(m.group(3))
