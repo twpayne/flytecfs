@@ -52,6 +52,9 @@ class Direntry(fuse.Direntry):
         self.st_blocks = (self.st_size + self.st_blksize - 1) / self.st_blksize
         return self
 
+    def rename(self, old, new):
+        raise IOError, (errno.EPERM, None)
+
     def unlink(self):
         raise IOError, (errno.EPERM, None)
 
@@ -151,6 +154,9 @@ class Filesystem(fuse.Fuse):
     def readdir(self, path, offset):
         for direntry in self.get(path).readdir(offset):
             yield direntry
+
+    def rename(self, old, new):
+        return self.get(old).rename(old, new)
 
     def main(self):
         if callable(self.root):
