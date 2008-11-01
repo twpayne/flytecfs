@@ -240,12 +240,11 @@ class SNP(_Struct):
 
 class Track(_Struct):
 
-    def __init__(self, count, index, dt, duration, igc_filename=None):
+    def __init__(self, count, index, dt, duration):
         self.count = count
         self.index = index
         self.dt = dt
         self.duration = duration
-        self.igc_filename = igc_filename
 
 
 class Waypoint(_Struct):
