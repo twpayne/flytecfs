@@ -238,7 +238,7 @@ class SNP(_Struct):
         self.software_version = software_version
 
 
-class Track(_Struct):
+class Tracklog(_Struct):
 
     def __init__(self, count, index, dt, duration):
         self.count = count
@@ -390,7 +390,7 @@ class FlytecDevice(object):
                           tzinfo=UTC())
             hours, minutes, seconds = map(int, m.groups()[8:11])
             duration = timedelta(hours=hours, minutes=minutes, seconds=seconds)
-            yield Track(count, index, dt, duration)
+            yield Tracklog(count, index, dt, duration)
 
     def pbrtl(self):
         return list(self.ipbrtl())
