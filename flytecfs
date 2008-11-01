@@ -21,6 +21,8 @@
 # TODO fix route deletion
 # TODO route upload
 # TODO preferences application
+# TODO persistent tracklog renames
+# TODO backup tracklog folder
 
 
 from __future__ import with_statement
@@ -32,6 +34,7 @@ except ImportError:
 from collections import defaultdict
 import errno
 import logging
+import os.path
 import sys
 import time
 from zipfile import ZipFile, ZipInfo, ZIP_DEFLATED
@@ -150,7 +153,7 @@ class SettingsDirectory(Directory):
 class TracklogFile(File):
 
     def __init__(self, flytec, tracklog):
-        File.__init__(self, flytec, (), tracklog.igc_filename)
+        File.__init__(self, flytec, (), tracklog.filename)
         self.tracklog = tracklog
         self.st_ctime = time.mktime(tracklog.dt.timetuple())
         self.st_mtime = self.st_ctime + tracklog.duration.seconds
@@ -158,6 +161,11 @@ class TracklogFile(File):
 
     def flytec_content(self):
         return self.flytec.tracklog_content(self.tracklog)
+
+    def rename(self, old, new):
+        if os.path.dirname(old) != os.path.dirname(new):
+            raise IOError, (errno.EPERM, None)
+        self.flytec.tracklog_rename(self.tracklog, os.path.basename(new))
 
     def unlink(self):
         self.flytec.tracklog_unlink(self.tracklog)
@@ -186,7 +194,7 @@ class TracklogsZipFile(File):
         self.st_atime = self.st_mtime
         zip_file = ZipFile(string_io, 'w', ZIP_DEFLATED)
         for tracklog in tracklogs:
-            zi = ZipInfo(tracklog.igc_filename)
+            zi = ZipInfo(tracklog.filename)
             zi.compress_type = ZIP_DEFLATED
             zi.date_time = (tracklog.dt + tracklog.duration).timetuple()[:6]
             zi.external_attr = 0444 << 16
