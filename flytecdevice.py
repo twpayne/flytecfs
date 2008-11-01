@@ -228,12 +228,12 @@ class Tracklog(_Struct):
 
 class Waypoint(_Struct):
 
-    def __init__(self, lat, lon, short_name, long_name, alt):
+    def __init__(self, lat, lon, short_name, long_name, ele):
         self.lat = lat
         self.lon = lon
         self.short_name = short_name
         self.long_name = long_name
-        self.alt = alt
+        self.ele = ele
 
     def nmea(self):
         lat_hemi = 'S' if self.lat < 0 else 'N'
@@ -375,7 +375,7 @@ class FlytecDevice(object):
 
     def pbrwpr(self, waypoint):
         self.none('PBRWPR,%s,,%-17s,%04d'
-                  % (waypoint.nmea(), waypoint.long_name[:17], waypoint.alt))
+                  % (waypoint.nmea(), waypoint.long_name[:17], waypoint.ele))
 
     def ipbrwps(self):
         for m in self.ieach('PBRWPS,', PBRWPS_RE):
@@ -393,8 +393,8 @@ class FlytecDevice(object):
                 lon = -lon
             short_name = m.group(9)
             long_name = m.group(10)
-            alt = int(m.group(11))
-            yield Waypoint(lat, lon, short_name, long_name, alt)
+            ele = int(m.group(11))
+            yield Waypoint(lat, lon, short_name, long_name, ele)
 
     def pbrwps(self):
         return list(self.ipbrwps())

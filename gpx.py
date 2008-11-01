@@ -57,7 +57,7 @@ def wptType_tag(tb, waypoint, name):
         with tag(tb, 'name'):
             tb.data(waypoint.long_name.rstrip())
         with tag(tb, 'ele'):
-            tb.data(str(waypoint.alt))
+            tb.data(str(waypoint.ele))
 
 
 @contextmanager
