@@ -45,6 +45,7 @@ class Flytec(object):
         self.device = FlytecDevice(file_or_path)
         self._memory = [None] * 352
         self._routes = None
+        self._routes_rev = None
         self._snp = self.device.pbrsnp()
         self._tracklogs = None
         self._waypoints = None
@@ -80,14 +81,12 @@ class Flytec(object):
         if not route.index:
             return False
         self.device.pbrrtx(route)
-        if not self._routes is None:
-            self._routes = [r for r in self._routes if r != route]
         self.revs['routes'] += 1
         self.revs['route_%s' % route.long_name] += 1
         return True
 
     def routes(self):
-        if self._routes is None:
+        if self._routes is None or self._routes_rev != self.revs['routes']:
             self._routes = self.device.pbrrts()
         return self._routes
 
@@ -199,9 +198,7 @@ class Flytec(object):
         return None
 
     def waypoint_unlink(self, waypoint):
-        if self._routes is None:
-            self.routes()
-        for route in self._routes:
+        for route in self.routes():
             if any(rp.long_name == waypoint.long_name
                    for rp in route.routepoints):
                 return False
