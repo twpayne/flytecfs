@@ -394,8 +394,5 @@ class FlytecDevice(object):
     def pbrwps(self):
         return list(self.ipbrwps())
 
-    def pbrwpx(self, waypoint=None):
-        if waypoint:
-            self.none('PBRWPX,%-17s' % waypoint.long_name)
-        else:
-            self.none('PBRWPX,')
+    def pbrwpx(self, waypoint):
+        self.none('PBRWPX,%-17s' % waypoint.long_name)
