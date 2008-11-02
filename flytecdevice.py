@@ -178,7 +178,7 @@ class POSIXSerialIO(SerialIO):
         tty.tcflush(self.fd, tty.TCIOFLUSH)
 
     def read(self, n):
-        if select.select([self.fd], [], [], 1) == ([], [], []):
+        if select.select([self.fd], [], [], 8) == ([], [], []):
             raise TimeoutError()
         data = os.read(self.fd, n)
         if not data:
