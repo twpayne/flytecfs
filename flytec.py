@@ -48,6 +48,7 @@ class Flytec(object):
         self._snp = self.device.pbrsnp()
         self._tracklogs = None
         self._waypoints = None
+        self._waypoints_rev = None
         self.revs = defaultdict(int)
         if cachebasedir is None:
             cachebasedir = os.path.expanduser('~/.flytecfs/cache')
@@ -186,10 +187,13 @@ class Flytec(object):
             date = tracklog.dt.date()
         return self._tracklogs
 
+    def waypoint_create(self, waypoint):
+        self.device.pbrwpr(waypoint)
+        self.revs['waypoints'] += 1
+        self.revs['waypoint_%s' % waypoint.long_name] += 1
+
     def waypoint_get(self, long_name):
-        if self._waypoints is None:
-            self.waypoints()
-        for waypoint in self._waypoints:
+        for waypoint in self.waypoints():
             if waypoint.long_name == long_name:
                 return waypoint
         return None
@@ -202,12 +206,13 @@ class Flytec(object):
                    for rp in route.routepoints):
                 return False
         self.device.pbrwpx(waypoint)
-        self._waypoints = [wp for wp in self._waypoints if wp != waypoint]
         self.revs['waypoints'] += 1
         self.revs['waypoint_%s' % waypoint.long_name] += 1
         return True
 
     def waypoints(self):
-        if self._waypoints is None:
+        if self._waypoints is None \
+           or self._waypoints_rev != self.revs['waypoints']:
             self._waypoints = self.device.pbrwps()
+            self._waypoints_rev = self.revs['waypoints']
         return self._waypoints
