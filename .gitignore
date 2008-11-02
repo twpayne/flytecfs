@@ -1,4 +1,5 @@
 *.gpx
 *.pyc
+*.wpt
 *.zip
 .*.swp
