@@ -19,9 +19,15 @@ from __future__ import with_statement
 
 from contextlib import contextmanager
 try:
-    from xml.etree.cElementTree import ElementTree, TreeBuilder
+    from xml.etree.cElementTree import ElementTree, TreeBuilder, parse
 except ImportError:
-    from xml.etree.ElementTree import ElementTree, TreeBuilder
+    from xml.etree.ElementTree import ElementTree, TreeBuilder, parse
+import re
+
+from flytecdevice import Waypoint
+
+
+TRAILING_ZEROS_RE = re.compile(r'\.0*\Z|0+\Z')
 
 
 @contextmanager
@@ -51,8 +57,8 @@ def gpx_tag():
 
 @contextmanager
 def wptType_tag(tb, waypoint, name):
-    lat = '%.8f' % (waypoint.lat / 60000.0)
-    lon = '%.8f' % (waypoint.lon / 60000.0)
+    lat = TRAILING_ZEROS_RE.sub('', '%.5f' % (waypoint.lat / 60000.0))
+    lon = TRAILING_ZEROS_RE.sub('', '%.5f' % (waypoint.lon / 60000.0))
     with tag(tb, name, {'lat': lat, 'lon': lon}):
         with tag(tb, 'name'):
             tb.data(waypoint.long_name.rstrip())
@@ -84,3 +90,15 @@ def write(tb, file, indent='\t'):
         else:
             file.write('%s<%s%s/>\n' % (prefix, et.tag, attrs))
     helper(ElementTree(tb.close()).getroot())
+
+
+def waypoints(file):
+    for wpt in parse(file).findall('/{%s}wpt' % GPX_NAMESPACE):
+        lat = int(round(60000 * float(wpt.get('lat'))))
+        lon = int(round(60000 * float(wpt.get('lon'))))
+        ele_tag = wpt.find('{%s}ele' % GPX_NAMESPACE)
+        ele = 0 if ele_tag is None else int(round(float(ele_tag.text)))
+        name_tag = wpt.find('{%s}name' % GPX_NAMESPACE)
+        long_name = '' if name_tag is None else name_tag.text
+        short_name = '%-3s%03d' % (long_name[:3].upper(), ele / 10)
+        yield Waypoint(lat, lon, short_name, long_name, ele)
