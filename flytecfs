@@ -17,7 +17,6 @@
 
 
 # TODO enable multi-threading
-# TODO waypoint upload
 # TODO fix route deletion
 # TODO route upload
 # TODO preferences application
@@ -43,6 +42,7 @@ import fuse
 import filesystem
 from flytec import Flytec
 import gpx
+import wpt
 
 
 class File(filesystem.File):
@@ -209,6 +209,9 @@ class WaypointsDirectory(Directory):
             yield WaypointFile(self.flytec, waypoint)
         yield WaypointsFile(self.flytec, 'waypoints.gpx')
 
+    def create(self, path, mode):
+        return WaypointsUploadFile(self.flytec, path)
+
 
 class WaypointFile(GPXFile):
 
@@ -234,6 +237,33 @@ class WaypointsFile(GPXFile):
     def gpx_content(self, tb):
         for waypoint in self.flytec.waypoints():
             gpx.wptType_tag(tb, waypoint, 'wpt')
+
+
+class WaypointsUploadFile(File):
+
+    def __init__(self, flytec, name):
+        File.__init__(self, flytec, (), name)
+        self.string_io = StringIO()
+
+    def flytec_content(self):
+        return self.string_io.getvalue()
+
+    def flush(self):
+        self.string_io.seek(0)
+        ext = os.path.splitext(self.name)[1].lower()
+        if ext == '.gpx':
+            for waypoint in gpx.waypoints(self.string_io):
+                self.flytec.waypoint_create(waypoint)
+        elif ext == '.wpt':
+            for waypoint in wpt.waypoints(self.string_io):
+                self.flytec.waypoint_create(waypoint)
+        else:
+            raise IOError, (errno.EINVAL, None)
+
+    def write(self, buffer, offset):
+        self.string_io.seek(offset)
+        self.string_io.write(buffer)
+        return len(buffer)
 
 
 class FlytecRootDirectory(Directory):
