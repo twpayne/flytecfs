@@ -15,6 +15,9 @@
 #   along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 
+# FIXME NMEA character encoding
+
+
 from codecs import Codec, CodecInfo
 import codecs
 from datetime import datetime, timedelta, tzinfo
@@ -229,21 +232,21 @@ class Tracklog(_Struct):
 class Waypoint(_Struct):
 
     def __init__(self, lat, lon, short_name, long_name, ele):
-        self.lat = lat
-        self.lon = lon
-        self.short_name = short_name
-        self.long_name = long_name
-        self.ele = ele
+        self.lat = min(max(-(60000 * 180 - 1), lat), 60000 * 180 - 1)
+        self.lon = min(max(-(60000 * 90 - 1), lon), 60000 * 90 - 1)
+        self.short_name = '%-6s' % short_name.encode('ascii', 'replace')[:6]
+        self.long_name = '%-17s' % long_name.encode('ascii', 'replace')[:17]
+        self.ele = min(max(-999, ele), 9999)
 
     def nmea(self):
-        lat_hemi = 'W' if self.lat < 0 else 'E'
+        lat_hemi = 'S' if self.lat < 0 else 'N'
         lat_deg, lat_mmin = divmod(abs(self.lat), 60000)
         lat_min, lat_mmin = divmod(lat_mmin, 1000)
-        lon_hemi = 'S' if self.lon < 0 else 'N'
+        lon_hemi = 'W' if self.lon < 0 else 'E'
         lon_deg, lon_mmin = divmod(abs(self.lon), 60000)
         lon_min, lon_mmin = divmod(lon_mmin, 1000)
         lat = '%02d%02d.%03d,%s' % (lat_deg, lat_min, lat_mmin, lat_hemi)
-        lon = '%02d%02d.%03d,%s' % (lon_deg, lon_min, lon_mmin, lon_hemi)
+        lon = '%03d%02d.%03d,%s' % (lon_deg, lon_min, lon_mmin, lon_hemi)
         return '%s,%s' % (lat, lon)
 
 
