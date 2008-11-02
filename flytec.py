@@ -15,6 +15,9 @@
 #   along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 
+# FIXME deleting a waypoint causes routes to be reloaded
+
+
 from __future__ import with_statement
 
 from collections import defaultdict
@@ -81,13 +84,17 @@ class Flytec(object):
         if not route.index:
             return False
         self.device.pbrrtx(route)
-        self.revs['routes'] += 1
+        if not self._routes is None:
+            self._routes = [r for r in self._routes if r != route]
+            self.revs['routes'] += 1
+            self._routes_rev = self.revs['routes']
         self.revs['route_%s' % route.long_name] += 1
         return True
 
     def routes(self):
         if self._routes is None or self._routes_rev != self.revs['routes']:
             self._routes = self.device.pbrrts()
+            self._routes_rev = self.revs['routes']
         return self._routes
 
     def snp(self):
@@ -199,11 +206,13 @@ class Flytec(object):
 
     def waypoint_unlink(self, waypoint):
         for route in self.routes():
-            if any(rp.long_name == waypoint.long_name
+            if any(waypoint.long_name == rp.long_name
                    for rp in route.routepoints):
                 return False
         self.device.pbrwpx(waypoint)
         self.revs['waypoints'] += 1
+        self._waypoints = [w for w in self._waypoints if w != waypoint]
+        self._waypoints_rev = self.revs['waypoint']
         self.revs['waypoint_%s' % waypoint.long_name] += 1
         return True
 
