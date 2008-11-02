@@ -108,6 +108,9 @@ class Directory(Direntry):
                 self.st_nlink += 1
         return Direntry.getattr(self)
 
+    def create(self, path, mode):
+        raise IOError, (errno.EPERM, None)
+
     def readdir(self, offset):
         yield Directory('.')
         yield Directory('..')
@@ -134,6 +137,10 @@ class Filesystem(fuse.Fuse):
                 else:
                     raise IOError, (errno.ENOENT, None)
             return direntry
+
+    def create(self, path, unknown, mode):
+        dirname, basename = os.path.split(path)
+        return self.get(dirname).create(basename, mode)
 
     def fgetattr(self, path, fh=None):
         return fh.fgetattr()
@@ -168,3 +175,6 @@ class Filesystem(fuse.Fuse):
 
     def unlink(self, path):
         self.get(path).unlink()
+
+    def write(self, path, buffer, offset, fh):
+        return fh.write(buffer, offset)
