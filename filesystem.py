@@ -120,9 +120,18 @@ class Directory(Direntry):
 
 class Filesystem(fuse.Fuse):
 
-    def __init__(self, root, *args, **kwargs):
+    def __init__(self, *args, **kwargs):
         fuse.Fuse.__init__(self, *args, **kwargs)
-        self.root = root
+        self.f_bsize = 0
+        self.f_frsize = 0
+        self.f_blocks = 0
+        self.f_bfree = 0
+        self.f_bavail = 0
+        self.f_files = 0
+        self.f_ffree = 0
+        self.f_favail = 0
+        self.f_flag = 0
+        self.f_namemax = 0
 
     def get(self, path):
         if path == '/':
@@ -165,10 +174,8 @@ class Filesystem(fuse.Fuse):
     def rename(self, old, new):
         return self.get(old).rename(old, new)
 
-    def main(self):
-        if callable(self.root):
-            self.root = self.root(self)
-        fuse.Fuse.main(self)
+    def statfs(self):
+        return self
 
     def open(self, path, flags):
         return self.get(path).open(flags, context=self.GetContext())

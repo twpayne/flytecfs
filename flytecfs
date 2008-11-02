@@ -268,8 +268,7 @@ class WaypointsUploadFile(File):
 
 class FlytecRootDirectory(Directory):
 
-    def __init__(self, filesystem):
-        flytec = Flytec(filesystem.device)
+    def __init__(self, flytec):
         Directory.__init__(self, flytec, '')
         self._content = []
         self._content.append(RoutesDirectory(self.flytec, 'routes'))
@@ -282,19 +281,38 @@ class FlytecRootDirectory(Directory):
     def content(self):
         return iter(self._content)
 
+class FlytecFilesystem(filesystem.Filesystem):
+
+    def __init__(self, *args, **kwargs):
+        filesystem.Filesystem.__init__(self, *args, **kwargs)
+        self.device = '/dev/ttyUSB0'
+        self.parser.add_option(mountopt='device',
+                               metavar='PATH',
+                               help='set device')
+        self.f_bsize = 1024
+        self.f_frsize = 1024
+        self.f_blocks = 200
+
+    def main(self):
+        self.flytec = Flytec(self.device)
+        self.root = FlytecRootDirectory(self.flytec)
+        return filesystem.Filesystem.main(self)
+
+    def statfs(self):
+        self.f_bfree = self.f_blocks - len(self.flytec.waypoints())
+        self.f_bavail = self.f_bfree
+        self.f_files = self.f_blocks
+        self.f_ffree = self.f_bfree
+        self.f_favail = self.f_bavail
+        return self
+
 
 def main(argv):
     logging.basicConfig(level=logging.INFO)
-    server = filesystem.Filesystem(FlytecRootDirectory,
-                                   dash_s_do='setsingle',
-                                   usage=fuse.Fuse.fusage)
-    server.device = '/dev/ttyUSB0'
-    server.parser.add_option(mountopt='device',
-                             metavar='PATH',
-                             help='set device')
-    server.parse(args=argv, values=server, errex=1)
-    if server.fuse_args.mount_expected():
-        server.main()
+    flytecfs = FlytecFilesystem(dash_s_do='setsingle', usage=fuse.Fuse.fusage)
+    flytecfs.parse(args=argv, values=flytecfs, errex=1)
+    if flytecfs.fuse_args.mount_expected():
+        flytecfs.main()
 
 
 if __name__ == '__main__':
