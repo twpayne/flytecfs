@@ -76,18 +76,18 @@ def rte_tag(tb, route, waypoint_get):
 
 
 def write(tb, file, indent='\t'):
-    def helper(et, prefix=''):
-        attrs = ''.join(' %s="%s"' % pair for pair in et.attrib.items())
-        if et.getchildren():
-            file.write('%s<%s%s>\n' % (prefix, et.tag, attrs))
-            for child in et.getchildren():
+    def helper(element, prefix=''):
+        attrs = ''.join(' %s="%s"' % pair for pair in element.attrib.items())
+        if element.getchildren():
+            file.write('%s<%s%s>\n' % (prefix, element.tag, attrs))
+            for child in element.getchildren():
                 helper(child, prefix + indent)
-            file.write('%s</%s>\n' % (prefix, et.tag))
-        elif et.text:
+            file.write('%s</%s>\n' % (prefix, element.tag))
+        elif element.text:
             file.write('%s<%s%s>%s</%s>\n' %
-                       (prefix, et.tag, attrs, et.text, et.tag))
+                       (prefix, element.tag, attrs, element.text, element.tag))
         else:
-            file.write('%s<%s%s/>\n' % (prefix, et.tag, attrs))
+            file.write('%s<%s%s/>\n' % (prefix, element.tag, attrs))
     helper(ElementTree(tb.close()).getroot())
 
 
