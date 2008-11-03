@@ -68,6 +68,8 @@ class File(Direntry):
         Direntry.__init__(self, name, **kwargs)
         self.st_mode = self.type | mode
         self.st_nlink = 1
+        self.direct_io = False
+        self.keep_cache = False
 
     def content(self):
         return ''
