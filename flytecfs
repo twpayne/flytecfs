@@ -296,6 +296,7 @@ class FlytecFilesystem(filesystem.Filesystem):
     def main(self):
         self.flytec = Flytec(self.device)
         self.root = FlytecRootDirectory(self.flytec)
+        self.multithreaded = False
         return filesystem.Filesystem.main(self)
 
     def statfs(self):
