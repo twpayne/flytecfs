@@ -366,11 +366,8 @@ class FlytecDevice(object):
     def pbrtr(self, tracklog):
         return ''.join(self.ipbrtr(tracklog))
 
-    def pbrrtx(self, route=None):
-        if route:
-            self.none('PBRRTX,%-17s' % route.name)
-        else:
-            self.none('PBRRTX,')
+    def pbrrtx(self, route):
+        self.none('PBRRTX,%-17s' % route.name)
 
     def pbrwpr(self, waypoint):
         self.none('PBRWPR,%s,,%-17s,%04d'
