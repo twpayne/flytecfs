@@ -383,8 +383,7 @@ class FlytecDevice(object):
             lon = 60000 * lon_deg + 1000 * lon_min + lon_mmin
             if m.group(8) == 'W':
                 lon = -lon
-            short_name = m.group(9)
-            long_name = m.group(10)
+            short_name, long_name = m.groups()[8:10]
             ele = int(m.group(11))
             yield Waypoint(lat, lon, short_name, long_name, ele)
 
