@@ -37,7 +37,6 @@ def tag(tb, name, attrs={}):
     tb.end(name)
 
 
-GPX_NAMESPACE = 'http://www.topografix.com/GPX/1/1'
 GPX_DATETIME_FORMAT = '%Y-%m-%dT%H:%M:%SZ'
 
 
@@ -46,7 +45,7 @@ def gpx_tag():
     attrs = {
         'creator': 'http://code.google.com/p/flytecfs',
         'version': '1.1',
-        'xmlns': GPX_NAMESPACE,
+        'xmlns': 'http://www.topografix.com/GPX/1/1',
         'xmlns:xsi': 'http://www.w3.org/2001/XMLSchema-instance',
         'xsi:schemaLocation': 'http://www.topografix.com/GPX/1/1 '
                               'http://www.topografix.com/GPX/1/1/gpx.xsd',
@@ -93,12 +92,14 @@ def write(tb, file, indent='\t'):
 
 
 def waypoints(file):
-    for wpt in parse(file).findall('/{%s}wpt' % GPX_NAMESPACE):
+    element = parse(file)
+    namespace = re.match('\{(.*)\}', element.getroot().tag).group(1)
+    for wpt in element.findall('/{%s}wpt' % namespace):
         lat = int(round(60000 * float(wpt.get('lat'))))
         lon = int(round(60000 * float(wpt.get('lon'))))
-        ele_tag = wpt.find('{%s}ele' % GPX_NAMESPACE)
+        ele_tag = wpt.find('{%s}ele' % namespace)
         ele = 0 if ele_tag is None else int(round(float(ele_tag.text)))
-        name_tag = wpt.find('{%s}name' % GPX_NAMESPACE)
+        name_tag = wpt.find('{%s}name' % namespace)
         long_name = '' if name_tag is None else name_tag.text
-        short_name = '%-3s%03d' % (long_name[:3].upper(), ele / 10)
+        short_name = '%-3s%03d' % (long_name[:3].upper(), (ele + 5) / 10)
         yield Waypoint(lat, lon, short_name, long_name, ele)
