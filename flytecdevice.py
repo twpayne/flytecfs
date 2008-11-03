@@ -15,9 +15,6 @@
 #   along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 
-# FIXME NMEA character encoding
-
-
 from codecs import Codec, CodecInfo
 import codecs
 from datetime import datetime, timedelta, tzinfo
@@ -39,15 +36,16 @@ class UTC(tzinfo):
         return timedelta(0)
 
 
-NMEA_ENCODE_RE = re.compile('\\A[\x20-\x7f]{1,79}\\Z')
+NMEA_ENCODE_RE = re.compile('\\A[\x20-\x7e]{1,79}\\Z')
 NMEA_DECODE_RE = re.compile('\\A\\$(.{1,79})\\*([0-9A-F]{2})\r\n\\Z')
+NMEA_INVALID_CHAR_RE = re.compile('[^\x20-\x7e]')
 
 
 class NMEAError(UnicodeError):
     pass
 
 
-class NMEACodec(Codec):
+class NMEASentenceCodec(Codec):
 
     def decode(self, input, errors='strict'):
         if errors != 'strict':
@@ -77,12 +75,22 @@ class NMEACodec(Codec):
         return ('$%s*%02X\r\n' % (input, checksum), len(input))
 
 
+class NMEACharacterCodec(object):
+
+    def encode(self, input, errors='strict'):
+        if errors != 'replace':
+            raise NotImplementedError
+        return (NMEA_INVALID_CHAR_RE.sub('?', input), len(input))
+
+
 def nmea_search(encoding):
-    if encoding == 'nmea':
-        codec = NMEACodec()
-        return CodecInfo(codec.encode, codec.decode, name='nmea')
-    else:
-        return None
+    if encoding == 'nmea_sentence':
+        codec = NMEASentenceCodec()
+        return CodecInfo(codec.encode, codec.decode, name=encoding)
+    if encoding == 'nmea_characters':
+        codec = NMEACharacterCodec()
+        return CodecInfo(codec.encode, None, name=encoding)
+    return None
 
 
 codecs.register(nmea_search)
@@ -200,15 +208,15 @@ class Route(_Struct):
 
     def __init__(self, index, name, routepoints):
         self.index = index
-        self.name = name
+        self.name = name.encode('nmea_characters', 'replace')
         self.routepoints = routepoints
 
 
 class Routepoint(_Struct):
 
     def __init__(self, short_name, long_name):
-        self.short_name = short_name
-        self.long_name = long_name
+        self.short_name = short_name.encode('nmea_characters', 'replace')
+        self.long_name = long_name.encode('nmea_characters', 'replace')
 
 
 class SNP(_Struct):
@@ -234,8 +242,10 @@ class Waypoint(_Struct):
     def __init__(self, lat, lon, short_name, long_name, ele):
         self.lat = min(max(-(60000 * 180 - 1), lat), 60000 * 180 - 1)
         self.lon = min(max(-(60000 * 90 - 1), lon), 60000 * 90 - 1)
-        self.short_name = '%-6s' % short_name.encode('ascii', 'replace')[:6]
-        self.long_name = '%-17s' % long_name.encode('ascii', 'replace')[:17]
+        self.short_name = '%-6s' % short_name.encode('nmea_characters',
+                                                     'replace')[:6]
+        self.long_name = '%-17s' % long_name.encode('nmea_characters',
+                                                    'replace')[:17]
         self.ele = min(max(-999, ele), 9999)
 
     def nmea(self):
@@ -264,7 +274,7 @@ class FlytecDevice(object):
 
     def ieach(self, command, re=None):
         try:
-            self.io.writeline(command.encode('nmea'))
+            self.io.writeline(command.encode('nmea_sentence'))
             if self.io.readline() != XOFF:
                 raise Error
             while True:
@@ -274,7 +284,7 @@ class FlytecDevice(object):
                 elif re is None:
                     yield line
                 else:
-                    m = re.match(line.decode('nmea'))
+                    m = re.match(line.decode('nmea_sentence'))
                     if m is None:
                         raise Error(line)
                     yield m
@@ -317,7 +327,7 @@ class FlytecDevice(object):
 
     def ipbrrts(self):
         for line in self.ieach('PBRRTS,'):
-            line = line.decode('nmea')
+            line = line.decode('nmea_sentence')
             m = PBRRTS_RE1.match(line)
             if m:
                 index, count = map(int, m.groups()[0:2])
