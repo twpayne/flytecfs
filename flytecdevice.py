@@ -329,8 +329,7 @@ class FlytecDevice(object):
                 continue
             m = PBRRTS_RE2.match(line)
             if m:
-                index, count = map(int, m.groups()[0:2])
-                routepoint_index = int(m.group(3))
+                index, count, routepoint_index = map(int, m.groups()[0:3])
                 short_name, long_name = m.groups()[3:5]
                 routepoint = Routepoint(short_name, long_name)
                 routepoints.append(routepoint)
@@ -375,12 +374,14 @@ class FlytecDevice(object):
 
     def ipbrwps(self):
         for m in self.ieach('PBRWPS,', PBRWPS_RE):
-            lat_deg, lat_min, lat_mmin = map(int, m.groups()[0:3])
-            lat = 60000 * lat_deg + 1000 * lat_min + lat_mmin
+            lat = sum(map(lambda x, y: int(x) * y,
+                          m.groups[0:3],
+                          (60000, 1000, 1)))
             if m.group(4) == 'S':
                 lat = -lat
-            lon_deg, lon_min, lon_mmin = map(int, m.groups()[4:7])
-            lon = 60000 * lon_deg + 1000 * lon_min + lon_mmin
+            lon = sum(map(lambda x, y: int(x) * y,
+                          m.groups[4:7],
+                          (60000, 1000, 1)))
             if m.group(8) == 'W':
                 lon = -lon
             short_name, long_name = m.groups()[8:10]
