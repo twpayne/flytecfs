@@ -193,7 +193,7 @@ class POSIXSerialIO(SerialIO):
 class _Struct:
 
     def __repr__(self):
-        return '<%s %s>' % (self.__class__.__name__, repr(self.__dict__))
+        return '<%s %r>' % (self.__class__.__name__, self.__dict__)
 
 
 class Route(_Struct):
