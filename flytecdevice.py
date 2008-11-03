@@ -375,12 +375,12 @@ class FlytecDevice(object):
     def ipbrwps(self):
         for m in self.ieach('PBRWPS,', PBRWPS_RE):
             lat = sum(map(lambda x, y: int(x) * y,
-                          m.groups[0:3],
+                          m.groups()[0:3],
                           (60000, 1000, 1)))
             if m.group(4) == 'S':
                 lat = -lat
             lon = sum(map(lambda x, y: int(x) * y,
-                          m.groups[4:7],
+                          m.groups()[4:7],
                           (60000, 1000, 1)))
             if m.group(8) == 'W':
                 lon = -lon
