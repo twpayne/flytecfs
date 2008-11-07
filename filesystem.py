@@ -26,6 +26,7 @@ import time
 
 import fuse
 
+
 fuse.fuse_python_api = (0, 2)
 fuse.feature_assert(26)
 
