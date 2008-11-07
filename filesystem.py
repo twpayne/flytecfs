@@ -161,10 +161,6 @@ class Filesystem(fuse.Fuse):
     def flush(self, path, fh=None):
         return fh.flush()
 
-    def fsinit(self):
-        if hasattr(self.root, 'fsinit'):
-            self.root.fsinit()
-
     def getattr(self, path):
         return self.get(path).getattr()
 
