@@ -208,7 +208,7 @@ class Route(_Struct):
 
     def __init__(self, index, name, routepoints):
         self.index = index
-        self.name = name.encode('nmea_characters', 'replace')
+        self.name = '%-17s' % name.encode('nmea_characters', 'replace')[:17]
         self.routepoints = routepoints
 
 
@@ -376,11 +376,11 @@ class FlytecDevice(object):
         return ''.join(self.ipbrtr(tracklog))
 
     def pbrrtx(self, route):
-        self.none('PBRRTX,%-17s' % route.name)
+        self.none('PBRRTX,%s' % route.name)
 
     def pbrwpr(self, waypoint):
-        self.none('PBRWPR,%s,,%-17s,%04d'
-                  % (waypoint.nmea(), waypoint.long_name[:17], waypoint.ele))
+        self.none('PBRWPR,%s,,%s,%04d'
+                  % (waypoint.nmea(), waypoint.long_name, waypoint.ele))
 
     def ipbrwps(self):
         for m in self.ieach('PBRWPS,', PBRWPS_RE):
@@ -402,4 +402,4 @@ class FlytecDevice(object):
         return list(self.ipbrwps())
 
     def pbrwpx(self, waypoint):
-        self.none('PBRWPX,%-17s' % waypoint.long_name)
+        self.none('PBRWPX,%s' % waypoint.long_name)
