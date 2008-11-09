@@ -15,9 +15,6 @@
 #   along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 
-# TODO correct permissions checking in open
-
-
 import errno
 import os
 import stat
@@ -86,8 +83,12 @@ class File(Direntry):
         pass
 
     def open(self, flags, context):
-        if flags & (os.O_RDONLY | os.O_RDWR | os.O_WRONLY) != os.O_RDONLY:
-            raise IOError, (errno.EACCES, None)
+        if flags & 3 == os.O_RDONLY or flags & 3 == os.O_RDWR:
+            if not self.st_mode & stat.S_IRUSR:
+                raise IOError, (errno.EACCES, None)
+        if flags & 3 == os.O_WRONLY or flags & 3 == os.O_RDWR:
+            if not self.st_mode & stat.S_IWUSR:
+                raise IOError, (errno.EACCES, None)
         return self
 
     def read(self, size, offset):
