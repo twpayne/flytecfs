@@ -1,0 +1,58 @@
+#!/usr/bin/python
+#   Flytec/Brauniger device identifier
+#   Copyright (C) 2008  Tom Payne
+#
+#   This program is free software: you can redistribute it and/or modify
+#   it under the terms of the GNU General Public License as published by
+#   the Free Software Foundation, either version 3 of the License, or
+#   (at your option) any later version.
+#
+#   This program is distributed in the hope that it will be useful,
+#   but WITHOUT ANY WARRANTY; without even the implied warranty of
+#   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#   GNU General Public License for more details.
+#
+#   You should have received a copy of the GNU General Public License
+#   along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+
+from optparse import OptionParser
+import re
+import sys
+import time
+
+from flytecdevice import FlytecDevice, TimeoutError
+
+
+def main(argv):
+    parser = OptionParser(description='Flytec/Brauniger device identifier')
+    parser.add_option('-d', '--device', metavar='PATH') 
+    parser.add_option('-i', '--retry-interval', metavar='SECONDS', type='int')
+    parser.add_option('-r', '--retries', metavar='N', type='int')
+    parser.set_defaults(device='/dev/ttyUSB0')
+    parser.set_defaults(retry_interval=2)
+    parser.set_defaults(retries=30)
+    options, args = parser.parse_args(argv)
+    if len(args) > 1:
+        parser.error('extra arguments on command line')
+    flytec_device = FlytecDevice(options.device)
+    for i in xrange(0, options.retries):
+        try_time = time.time()
+        try:
+            snp = flytec_device.pbrsnp()
+            break
+        except TimeoutError:
+            seconds = options.retry_interval - time.time() + try_time
+            if seconds > 0:
+                time.sleep(seconds)
+    else:
+        sys.exit(1)
+    print 'INSTRUMENT="%s"' % snp.instrument.encode('string_escape')
+    print 'PILOT_NAME="%s"' % snp.pilot_name.rstrip().encode('string_escape')
+    print 'SERIAL_NUMBER="%s"' % re.sub(r'\A0+', '', snp.serial_number).encode('string_escape')
+    print 'SOFTWARE_VERSION="%s"' % snp.software_version.encode('string_escape')
+    print 'MANUFACTURER="%s"' % snp.manufacturer[2].encode('string_escape')
+
+
+if __name__ == '__main__':
+    main(sys.argv)
