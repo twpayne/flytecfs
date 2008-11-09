@@ -16,11 +16,8 @@
 #   along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 
-# TODO enable multi-threading
 # TODO fix route deletion
 # TODO route upload
-# TODO preferences application
-# TODO backup tracklog folder
 
 
 from __future__ import with_statement
