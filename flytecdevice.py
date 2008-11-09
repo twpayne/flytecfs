@@ -123,9 +123,9 @@ class SerialIO(object):
         self.logger = logging.getLogger('%s.%s' % (__name__, filename))
         self.buffer = ''
 
-    def readline(self):
+    def readline(self, timeout):
         if self.buffer == '':
-            self.buffer = self.read(1024)
+            self.buffer = self.read(1024, timeout)
         if self.buffer[0] == XON or self.buffer[0] == XOFF:
             result = self.buffer[0]
             self.buffer = self.buffer[1:]
@@ -138,7 +138,7 @@ class SerialIO(object):
                 index = self.buffer.find('\n')
                 if index == -1:
                     result += self.buffer
-                    self.buffer = self.read(1024)
+                    self.buffer = self.read(1024, timeout)
                 else:
                     result += self.buffer[0:index + 1]
                     self.buffer = self.buffer[index + 1:]
@@ -185,8 +185,8 @@ class POSIXSerialIO(SerialIO):
     def flush(self):
         tty.tcflush(self.fd, tty.TCIOFLUSH)
 
-    def read(self, n):
-        if select.select([self.fd], [], [], 8) == ([], [], []):
+    def read(self, n, timeout):
+        if select.select([self.fd], [], [], timeout) == ([], [], []):
             raise TimeoutError()
         data = os.read(self.fd, n)
         if not data:
@@ -278,13 +278,13 @@ class FlytecDevice(object):
             self.io = file_or_path
         self.snp = None
 
-    def ieach(self, command, re=None):
+    def ieach(self, command, re=None, timeout=1):
         try:
             self.io.writeline(command.encode('nmea_sentence'))
-            if self.io.readline() != XOFF:
+            if self.io.readline(timeout) != XOFF:
                 raise Error
             while True:
-                line = self.io.readline()
+                line = self.io.readline(timeout)
                 if line == XON:
                     break
                 elif re is None:
@@ -298,20 +298,20 @@ class FlytecDevice(object):
             self.io.flush()
             raise
 
-    def none(self, command):
-        for m in self.ieach(command):
+    def none(self, command, timeout=1):
+        for m in self.ieach(command, timeout=timeout):
             raise Error(m)
 
-    def one(self, command, re=None):
+    def one(self, command, re=None, timeout=1):
         result = None
-        for m in self.ieach(command, re):
+        for m in self.ieach(command, re, timeout=timeout):
             if not result is None:
                 raise Error(m)
             result = m
         return result
 
     def pbrconf(self):
-        self.none('PBRCONF,')
+        self.none('PBRCONF,', timeout=4)
 
     def ipbrigc(self):
         return self.ieach('PBRIGC,')
@@ -382,7 +382,7 @@ class FlytecDevice(object):
         return ''.join(self.ipbrtr(tracklog))
 
     def pbrrtx(self, route):
-        self.none('PBRRTX,%s' % route.name)
+        self.none('PBRRTX,%s' % route.name, timeout=4)
 
     def pbrwpr(self, waypoint):
         self.none('PBRWPR,%s,,%s,%04d'
@@ -408,4 +408,4 @@ class FlytecDevice(object):
         return list(self.ipbrwps())
 
     def pbrwpx(self, waypoint):
-        self.none('PBRWPX,%s' % waypoint.long_name)
+        self.none('PBRWPX,%s' % waypoint.long_name, timeout=8)
