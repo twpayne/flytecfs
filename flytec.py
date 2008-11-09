@@ -15,9 +15,6 @@
 #   along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 
-# FIXME deleting a waypoint causes routes to be reloaded
-
-
 from __future__ import with_statement
 
 from collections import defaultdict
@@ -212,7 +209,7 @@ class Flytec(object):
         self.device.pbrwpx(waypoint)
         self.revs['waypoints'] += 1
         self._waypoints = [w for w in self._waypoints if w != waypoint]
-        self._waypoints_rev = self.revs['waypoint']
+        self._waypoints_rev = self.revs['waypoints']
         self.revs['waypoint_%s' % waypoint.long_name] += 1
         return True
 
