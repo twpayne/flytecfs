@@ -30,12 +30,6 @@ from tempfile import mkstemp
 from flytecdevice import FlytecDevice
 
 
-MANUFACTURER = {}
-for instrument in 'COMPEO COMPEO+ COMPETINO COMPETINO+ GALILEO'.split(' '):
-    MANUFACTURER[instrument] = ('B', 'XBR', 'Brauniger')
-for instrument in '5020 5030 6020 6030'.split(' '):
-    MANUFACTURER[instrument] = ('F', 'XFL', 'Flytec')
-
 TRACKLOG_ID_RE = re.compile(r'\A(\d{4})-(\d\d)-(\d\d)T(\d\d):(\d\d):(\d\d)Z\Z')
 
 
@@ -157,7 +151,6 @@ class Flytec(object):
             return self._tracklogs
         self._tracklogs = self.device.pbrtl()
         snp = self.snp()
-        manufacturer = MANUFACTURER[snp.instrument][1]
         serial_number = re.sub(r'\A0+', '', snp.serial_number)
         dates = {}
         for tracklog in self._tracklogs:
@@ -177,7 +170,7 @@ class Flytec(object):
             index = dates[tracklog.dt.date()].index(tracklog.dt.time()) + 1
             tracklog.igc_filename = '%s-%s-%s-%02d.IGC' \
                                     % (tracklog.dt.strftime('%Y-%m-%d'),
-                                       manufacturer,
+                                       snp.manufacturer[1],
                                        serial_number,
                                        index)
             rename_path = self.get_cache_path('tracklogs',

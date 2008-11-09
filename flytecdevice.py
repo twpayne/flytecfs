@@ -226,6 +226,12 @@ class SNP(_Struct):
         self.pilot_name = pilot_name
         self.serial_number = serial_number
         self.software_version = software_version
+        if self.instrument in 'COMPEO COMPEO+ COMPETINO COMPETINO+ GALILEO'.split():
+            self.manufacturer = ('X', 'XBR', 'Brauniger')
+        elif self.instrument in '5020 5030 6020 6030'.split():
+            self.manufacturer = ('X', 'XFL', 'Flytec')
+        else:
+            self.manufacturer = ('X', 'XXX', 'Unknown')
 
 
 class Tracklog(_Struct):
