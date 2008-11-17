@@ -31,7 +31,7 @@ def main(argv):
     parser.add_option('-r', '--retries', metavar='N', type='int')
     parser.set_defaults(device='/dev/ttyUSB0')
     parser.set_defaults(retry_interval=2)
-    parser.set_defaults(retries=sys.maxint)
+    parser.set_defaults(retries=sys.maxint - 1)
     options, args = parser.parse_args(argv)
     if len(args) > 1:
         parser.error('extra arguments on command line')
