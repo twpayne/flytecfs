@@ -278,6 +278,12 @@ class FlytecDevice(object):
             self.io = file_or_path
         self.snp = None
 
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.close()
+
     def close(self):
         self.io.close()
 
