@@ -307,7 +307,6 @@ class FlytecFilesystem(filesystem.Filesystem):
 
 
 def main(argv):
-    logging.basicConfig(level=logging.INFO)
     flytecfs = FlytecFilesystem(dash_s_do='setsingle', usage=fuse.Fuse.fusage)
     flytecfs.parse(args=argv, values=flytecfs, errex=1)
     if flytecfs.fuse_args.mount_expected():
