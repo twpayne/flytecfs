@@ -73,6 +73,8 @@ class Automounter(object):
                 self.state = 'failed'
         except KeyboardInterrupt:
             gobject.MainLoop().quit()
+        except OSError:
+            self.state = 'failed'
         except TimeoutError:
             logging.debug('polling %s timed out' % self.device)
             gobject.timeout_add(self.options.poll_interval * 1000, self.poll)
