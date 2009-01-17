@@ -278,6 +278,9 @@ class FlytecDevice(object):
             self.io = file_or_path
         self.snp = None
 
+    def close(self):
+        self.io.close()
+
     def ieach(self, command, re=None, timeout=1):
         try:
             self.io.writeline(command.encode('nmea_sentence'))
