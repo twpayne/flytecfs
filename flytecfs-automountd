@@ -107,23 +107,32 @@ class DBusAutomountDaemon(object):
         manager.connect_to_signal('DeviceRemoved', self.device_removed)
         self.automounters = {}
         for udi in manager.FindDeviceByCapability('serial'):
-            device_object = self.bus.get_object('org.freedesktop.Hal', udi)
-            device_interface = dbus.Interface(device_object,
-                                              'org.freedesktop.Hal.Device')
-            type = device_interface.GetPropertyString('serial.type')
-            if type in self.options.exclude_types:
-                continue
-            device = str(device_interface.GetPropertyString('serial.device'))
-            self.automounters[udi] = Automounter(device, self.options)
+            self.device_added(udi)
+
+    def get_device_interface(self, udi):
+        device_object = self.bus.get_object('org.freedesktop.Hal', udi)
+        return dbus.Interface(device_object, 'org.freedesktop.Hal.Device')
 
     def device_added(self, udi):
-        device_object = self.bus.get_object('org.freedesktop.Hal', udi)
-        device_interface = dbus.Interface(device_object,
-                                          'org.freedesktop.Hal.Device')
-        if device_interface.QueryCapability('serial'):
-            device = str(device_interface.GetPropertyString('serial.device'))
-            logging.info('adding %s (%s)' % (device, udi))
-            self.automounters[udi] = Automounter(device, self.options)
+        device_interface = self.get_device_interface(udi)
+        if not device_interface.QueryCapability('serial'):
+            return None
+        type = device_interface.GetPropertyString('serial.type')
+        if type in self.options.exclude_types:
+            return None
+        if type == 'usb':
+            odev_iface = self.get_device_interface(
+                    device_interface.GetPropertyString(
+                        'serial.originating_device'))
+            vendor_id = odev_iface.GetPropertyString('usb.vendor_id')
+            if vendor_id != 0x67b:
+                return None
+            product_id = odev_iface.GetPropertyString('usb.product_id')
+            if product_id != 0x2303:
+                return None
+        device = str(device_interface.GetPropertyString('serial.device'))
+        logging.info('adding %s (%s)' % (device, udi))
+        self.automounters[udi] = Automounter(device, self.options)
 
     def device_removed(self, udi):
         if udi in self.automounters.keys():
