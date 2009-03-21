@@ -1,0 +1,163 @@
+#!/usr/bin/python
+#   Flytec/Brauniger automount daemon
+#   Copyright (C) 2008  Tom Payne
+#
+#   This program is free software: you can redistribute it and/or modify
+#   it under the terms of the GNU General Public License as published by
+#   the Free Software Foundation, either version 3 of the License, or
+#   (at your option) any later version.
+#
+#   This program is distributed in the hope that it will be useful,
+#   but WITHOUT ANY WARRANTY; without even the implied warranty of
+#   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#   GNU General Public License for more details.
+#
+#   You should have received a copy of the GNU General Public License
+#   along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+
+from __future__ import with_statement
+
+import logging
+from optparse import OptionParser
+import os
+import os.path
+import re
+import sys
+
+import dbus
+import dbus.mainloop.glib
+import gobject
+
+from flytecdevice import FlytecDevice, TimeoutError
+
+
+FLYTECFS = os.path.join(os.path.dirname(__file__), 'flytecfs')
+FUSERMOUNT = '/bin/fusermount'
+
+
+class Automounter(object):
+
+    def __init__(self, device, options):
+        self.device = device
+        self.state = 'polling'
+        self.options = options
+        self.poll()
+
+    def poll(self):
+        if self.state != 'polling':
+            return False
+        try:
+            logging.debug('polling %s' % self.device)
+            with FlytecDevice(self.device) as flytec_device:
+                snp = flytec_device.pbrsnp()
+            replacements = {'%i': snp.instrument,
+                            '%m': snp.manufacturer[2],
+                            '%p': snp.pilot_name.rstrip(),
+                            '%s': re.sub(r'\A0+', '', snp.serial_number),
+                            '%v': snp.software_version}
+            self.mountpoint = re.sub('|'.join(replacements.keys()),
+                                     lambda m: replacements.get(m.group(0), m.group(0)),
+                                     self.options.mountpoint)
+            logging.debug('creating mountpoint %s' % self.mountpoint)
+            if not os.path.exists(self.mountpoint):
+                os.makedirs(self.mountpoint)
+            logging.info('mounting %s on %s' % (self.device, self.mountpoint))
+            result = os.spawnl(os.P_WAIT, FLYTECFS, FLYTECFS, '-o',
+                               'device=%s' % self.device, self.mountpoint)
+            if result == 0:
+                self.state = 'mounted'
+            else:
+                logging.warning('mounting %s on %s failed with exit code %d' % (self.device, self.mountpoint, result))
+                os.rmdir(self.mountpoint)
+                self.state = 'failed'
+        except KeyboardInterrupt:
+            gobject.MainLoop().quit()
+        except OSError:
+            self.state = 'failed'
+        except TimeoutError:
+            logging.debug('polling %s timed out' % self.device)
+            gobject.timeout_add(self.options.poll_interval * 1000, self.poll)
+            return True
+        return False
+
+    def remove(self):
+        if self.state == 'mounted':
+            logging.info('unmounting %s' % self.mountpoint)
+            result = os.spawnl(os.P_WAIT, FUSERMOUNT, FUSERMOUNT, '-u', '-z',
+                               self.mountpoint)
+            if result == 0:
+                logging.info('unmount of %s succeeded' % self.mountpoint)
+            else:
+                logging.warning('unmount of %s failed with exit code %d' (self.mountpoint, result))
+        if os.path.exists(self.mountpoint):
+            os.rmdir(self.mountpoint)
+        self.state = 'removed'
+
+
+class DBusAutomountDaemon(object):
+
+    def __init__(self, options):
+        self.options = options
+        self.bus = dbus.SystemBus()
+        manager_object = self.bus.get_object('org.freedesktop.Hal',
+                                             '/org/freedesktop/Hal/Manager')
+        manager = dbus.Interface(manager_object, 'org.freedesktop.Hal.Manager')
+        manager.connect_to_signal('DeviceAdded', self.device_added)
+        manager.connect_to_signal('DeviceRemoved', self.device_removed)
+        self.automounters = {}
+        for udi in manager.FindDeviceByCapability('serial'):
+            self.device_added(udi)
+
+    def get_device_interface(self, udi):
+        device_object = self.bus.get_object('org.freedesktop.Hal', udi)
+        return dbus.Interface(device_object, 'org.freedesktop.Hal.Device')
+
+    def device_added(self, udi):
+        device_interface = self.get_device_interface(udi)
+        if not device_interface.QueryCapability('serial'):
+            return None
+        type = device_interface.GetPropertyString('serial.type')
+        if type in self.options.exclude_types:
+            return None
+        if type == 'usb':
+            odev_iface = self.get_device_interface(
+                    device_interface.GetPropertyString(
+                        'serial.originating_device'))
+            vendor_id = odev_iface.GetPropertyString('usb.vendor_id')
+            if vendor_id != 0x67b:
+                return None
+            product_id = odev_iface.GetPropertyString('usb.product_id')
+            if product_id != 0x2303:
+                return None
+        device = str(device_interface.GetPropertyString('serial.device'))
+        logging.info('adding %s (%s)' % (device, udi))
+        self.automounters[udi] = Automounter(device, self.options)
+
+    def device_removed(self, udi):
+        if udi in self.automounters.keys():
+            logging.info('removing %s' % udi)
+            self.automounters[udi].remove()
+            del self.automounters[udi]
+
+
+def main(argv):
+    parser = OptionParser(description='Flytec/Brauniger automount daemon')
+    parser.add_option('-p', '--poll-interval', metavar='SECONDS', type=int)
+    parser.add_option('-m', '--mountpoint', metavar='PATTERN')
+    parser.add_option('-v', '--verbose', action='count', dest='level')
+    parser.add_option('-x', '--exclude-types', metavar='LIST')
+    parser.set_defaults(level=0)
+    parser.set_defaults(mountpoint=os.path.expanduser('~/.flytecfs/%p\'s %m %i (#%s)'))
+    parser.set_defaults(poll_interval=3)
+    parser.set_defaults(exclude_types='platform')
+    options, args = parser.parse_args(argv)
+    options.exclude_types = options.exclude_types.split(',')
+    logging.basicConfig(level=logging.WARN - 10 * options.level)
+    dbus.mainloop.glib.DBusGMainLoop(set_as_default=True)
+    daemon = DBusAutomountDaemon(options)
+    gobject.MainLoop().run()
+
+
+if __name__ == '__main__':
+    main(sys.argv)
