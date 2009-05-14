@@ -394,8 +394,8 @@ class FlytecDevice(object):
         self.none('PBRRTX,%s' % route.name, timeout=4)
 
     def pbrwpr(self, waypoint):
-        self.none('PBRWPR,%s,,%s,%04d'
-                  % (waypoint.nmea(), waypoint.long_name, waypoint.ele))
+        name = '%3s %13s' % (waypoint.short_name[:3], waypoint.long_name[:13])
+        self.none('PBRWPR,%s,,%s,%04d' % (waypoint.nmea(), name, waypoint.ele))
 
     def ipbrwps(self):
         for m in self.ieach('PBRWPS,', PBRWPS_RE):
