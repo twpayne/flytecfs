@@ -108,6 +108,9 @@ PBRTL_RE = re.compile(r'\APBRTL,(\d+),(\d+),(\d+).(\d+).(\d+),'
 PBRWPS_RE = re.compile(r'\APBRWPS,(\d{2})(\d{2})\.(\d{3}),([NS]),'
                        r'(\d{3})(\d{2})\.(\d{3}),([EW]),([^,]*),([^,]*),(\d+)'
                        r'\Z')
+PBRWPSE_RE = re.compile(r'\APBRWPS,(\d{2})(\d{2})\.(\d{3}),([NS]),'
+                        r'(\d{3})(\d{2})\.(\d{3}),([EW]),([^,]*),([^,]*),(\d+),'
+                        r'(\d+)\Z')
 
 
 class Error(RuntimeError): pass
@@ -245,7 +248,7 @@ class Tracklog(_Struct):
 
 class Waypoint(_Struct):
 
-    def __init__(self, lat, lon, short_name, long_name, ele):
+    def __init__(self, lat, lon, short_name, long_name, ele, type):
         self.lat = min(max(-(60000 * 180 - 1), lat), 60000 * 180 - 1)
         self.lon = min(max(-(60000 * 90 - 1), lon), 60000 * 90 - 1)
         self.short_name = '%-6s' % short_name.encode('nmea_characters',
@@ -253,6 +256,7 @@ class Waypoint(_Struct):
         self.long_name = '%-17s' % long_name.encode('nmea_characters',
                                                     'replace')[:17]
         self.ele = min(max(-999, ele), 9999)
+        self.type = min(max(0, type), 255)
 
     def nmea(self):
         lat_hemi = 'S' if self.lat < 0 else 'N'
@@ -397,6 +401,10 @@ class FlytecDevice(object):
         name = '%3s %13s' % (waypoint.short_name[:3], waypoint.long_name[:13])
         self.none('PBRWPR,%s,,%s,%04d' % (waypoint.nmea(), name, waypoint.ele))
 
+    def pbrwpre(self, waypoint):
+        name = '%3s %13s' % (waypoint.short_name[:3], waypoint.long_name[:13])
+        self.none('PBRWPRE,%s,,%s,%04d,%03d' % (waypoint.nmea(), name, waypoint.ele, waypoint.type))
+
     def ipbrwps(self):
         for m in self.ieach('PBRWPS,', PBRWPS_RE):
             lat = sum(map(lambda x, y: int(x) * y,
@@ -411,10 +419,30 @@ class FlytecDevice(object):
                 lon = -lon
             short_name, long_name = m.groups()[8:10]
             ele = int(m.group(11))
-            yield Waypoint(lat, lon, short_name, long_name, ele)
+            yield Waypoint(lat, lon, short_name, long_name, ele, 0)
+
+    def ipbrwpse(self):
+        for m in self.ieach('PBRWPSE,', PBRWPSE_RE):
+            lat = sum(map(lambda x, y: int(x) * y,
+                          m.groups()[0:3],
+                          (60000, 1000, 1)))
+            if m.group(4) == 'S':
+                lat = -lat
+            lon = sum(map(lambda x, y: int(x) * y,
+                          m.groups()[4:7],
+                          (60000, 1000, 1)))
+            if m.group(8) == 'W':
+                lon = -lon
+            short_name, long_name = m.groups()[8:10]
+            ele = int(m.group(11))
+            type = int(m.group(12))
+            yield Waypoint(lat, lon, short_name, long_name, ele, type)
 
     def pbrwps(self):
         return list(self.ipbrwps())
+
+    def pbrwpse(self):
+        return list(self.ipbrwpse())
 
     def pbrwpx(self, waypoint):
         self.none('PBRWPX,%s' % waypoint.long_name, timeout=8)
